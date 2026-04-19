@@ -1,16 +1,19 @@
 """Milestone 4 — plugin packaging surface.
 
 These tests don't exercise Claude Code itself. They lock down the files that
-a stranger who runs `/plugin marketplace add lskarada/skill-forge` would see:
+a stranger who runs `/plugin marketplace add lskarada/skill-forge` then
+`/plugin install skill-forge@skill-forge` would see:
 
 - `.claude-plugin/marketplace.json` — valid JSON, names the marketplace,
-  lists the `skill-forge` plugin at `./plugins/skill-forge`.
-- `plugins/skill-forge/.claude-plugin/plugin.json` — valid JSON, names the
-  plugin.
-- `plugins/skill-forge/commands/forge/{capture,optimize,status}.md` — each
-  file exists, has YAML frontmatter, and shells out to the `forge` CLI.
+  lists the `skill-forge` plugin at source `./` (repo-root-is-the-plugin).
+- `.claude-plugin/plugin.json` — valid JSON, names the plugin.
+- `commands/forge/{capture,optimize,status}.md` — each slash command file
+  exists, has YAML frontmatter, and shells out to the `forge` CLI.
   (Commands live at the plugin ROOT, per Claude Code's plugins-reference:
   "Components must be at the plugin root, not inside .claude-plugin/.")
+- `bin/forge` — executable wrapper that the plugin loader auto-PATHs so
+  slash commands can invoke `forge` as a bare command. Without this the
+  CLI is not reachable from a fresh plugin install.
 
 If any of these break, the plugin is not marketplace-ready.
 """
@@ -25,9 +28,9 @@ import pytest
 
 REPO = Path(__file__).resolve().parents[1]
 MARKETPLACE_DIR = REPO / ".claude-plugin"
-PLUGIN_ROOT = REPO / "plugins" / "skill-forge"
-PLUGIN_DIR = PLUGIN_ROOT / ".claude-plugin"
-COMMANDS_DIR = PLUGIN_ROOT / "commands" / "forge"
+PLUGIN_DIR = REPO / ".claude-plugin"
+COMMANDS_DIR = REPO / "commands" / "forge"
+BIN_DIR = REPO / "bin"
 
 
 def test_marketplace_manifest_exists_and_parses() -> None:
@@ -41,7 +44,7 @@ def test_marketplace_manifest_exists_and_parses() -> None:
     entry = next((p for p in plugins if p.get("name") == "skill-forge"), None)
     assert entry is not None, "marketplace must list the skill-forge plugin"
     # Relative path sources must start with ./ per the marketplace spec.
-    assert entry["source"] == "./plugins/skill-forge"
+    assert entry["source"].startswith("./")
 
 
 def test_plugin_manifest_exists_and_parses() -> None:
@@ -68,6 +71,21 @@ def test_commands_not_inside_claude_plugin_dir() -> None:
         f"commands must live at plugin root ({COMMANDS_DIR}), not under "
         f"{stray}"
     )
+
+
+def test_bin_forge_wrapper_exists_and_is_executable() -> None:
+    wrapper = BIN_DIR / "forge"
+    assert wrapper.is_file(), (
+        f"missing bin/forge wrapper at {wrapper}. The plugin loader "
+        f"auto-PATHs bin/, so slash commands rely on this file to invoke "
+        f"`forge` as a bare command on a fresh install."
+    )
+    mode = wrapper.stat().st_mode
+    assert mode & 0o111, f"bin/forge is not executable (mode={oct(mode)})"
+    text = wrapper.read_text(encoding="utf-8")
+    assert text.startswith("#!"), "bin/forge must have a shebang"
+    # Must actually delegate to the forge CLI, not be a placeholder.
+    assert "forge" in text
 
 
 @pytest.mark.parametrize(

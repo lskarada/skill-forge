@@ -10,7 +10,7 @@
   "plugins": [
     {
       "name": "skill-forge",
-      "source": "./plugins/skill-forge",
+      "source": "./",
       "description": "Capture a failure, write a regression test, fork parallel worktrees to try fixes, and merge the winner. Slash commands: /forge:capture, /forge:optimize, /forge:status.",
       "version": "0.1.0",
       "category": "development",

@@ -1,0 +1,31 @@
+#!/usr/bin/env bash
+# `forge` wrapper that the Claude Code plugin loader auto-PATHs when the
+# skill-forge plugin is enabled. Delegates to the `forge` Typer CLI defined
+# in pyproject.toml by running it through `uvx`, which handles the Python
+# env transparently.
+#
+# Why uvx: the plugin ships its own pyproject.toml at the plugin root, so
+# `uvx --from "$PLUGIN_ROOT" forge` resolves deps into a shared uv cache
+# the first time it runs and reuses the same env on subsequent calls.
+# Users don't have to `uv tool install` or fiddle with venvs.
+#
+# `$CLAUDE_PLUGIN_ROOT` isn't guaranteed to be set when the Bash tool
+# runs commands from `bin/`, so we derive the plugin root from the script
+# path instead.
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+PLUGIN_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+
+if ! command -v uvx >/dev/null 2>&1; then
+  cat >&2 <<EOF
+forge: the skill-forge plugin requires \`uvx\` (from astral.sh/uv) to run.
+Install uv with one of:
+    brew install uv
+    pip install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+EOF
+  exit 127
+fi
+
+exec uvx --quiet --from "$PLUGIN_ROOT" forge "$@"
