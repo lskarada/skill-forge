@@ -1,0 +1,14 @@
+{
+  "replay_version": "1",
+  "captured_at": "2026-04-19T15:40:00",
+  "source_transcript": "docs/DEMO.md#demo-fixture",
+  "source_turn_index": 0,
+  "replay_mode": "full_conversation",
+  "conversation": [
+    {
+      "role": "user",
+      "content": "hi"
+    }
+  ],
+  "trigger_turn_index": 0
+}

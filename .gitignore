@@ -16,6 +16,9 @@ venv/
 
 # Claude Code local
 .claude/settings.local.json
+.claude/agents/
 
-# Skill-Forge runtime output (created by `forge capture` / `forge optimize`)
-.skill-forge/
+# Skill-Forge runtime output.
+# Tests, replays, evidence, and learnings are committed — audit trail is a feature.
+# Only the throwaway per-run scratch directory stays local.
+.skill-forge/runs/

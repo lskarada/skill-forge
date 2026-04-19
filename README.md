@@ -97,12 +97,9 @@ same mistake.
 - **M1 — Capture.** Done.
 - **M2 — Single-branch optimize.** Done.
 - **M3 — Parallel worktrees (N workers, strategy variation).** Done.
-- **M4 — Plugin packaging.** This release.
-- **M5 — Polish + launch (demo video, dogfood case).**
-
-See [PRD.md](./PRD.md) and [SOUL.md](./SOUL.md) for the long-form design
-rationale. [KNOWN_ISSUES.md](./KNOWN_ISSUES.md) lists what's deliberately
-deferred.
+- **M4 — Plugin packaging.** Done.
+- **M5 — Polish + launch.** Demo fixture + walkthrough in
+  [`docs/DEMO.md`](./docs/DEMO.md).
 
 ---
 
