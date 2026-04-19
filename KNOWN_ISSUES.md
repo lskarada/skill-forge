@@ -128,3 +128,38 @@ assumes it's on PATH. No retry, no streaming, no structured error recovery
 env var exists for tests but not for production robustness.
 **When to fix:** Milestone 2, when multiple subagent calls compound the
 risk. A structured dispatch layer with retry/timeout is warranted then.
+
+---
+
+## bin/forge wrapper (M4)
+
+### Mid-session plugin install requires a new Claude Code session
+**Noted:** 2026-04-19.
+**Trigger:** Claude Code injects a plugin's `bin/` directory into the Bash
+tool's PATH at **session start**. Running `/plugin install skill-forge@skill-forge`
+inside an already-running session does not update that PATH, so `forge`
+stays "command not found" until the user opens a new Claude Code session.
+The plugin install itself succeeds; only the bare-CLI path is affected.
+Slash commands work either way because they're dispatched through the
+plugin router, not PATH.
+**Impact:** a stranger following the README in one sitting hits this on
+the first `forge --help` attempt and is likely to assume the install
+failed.
+**When to fix:** not a SkillForge bug — this is Claude Code plugin loader
+behavior. Fix is documentation: README should tell readers to restart
+Claude Code after install before using the bare `forge` command.
+Milestone 5 polish.
+
+### `bin/forge` hard-requires `uvx`; no fallback
+**Noted:** 2026-04-19.
+**Trigger:** the wrapper checks for `uvx` on PATH and, if missing, prints
+an install hint (brew / pip / astral.sh install script) and exits 127.
+There is no secondary code path — no `pipx`, no `python -m`, no vendored
+venv. If the user refuses to install `uv`, the plugin is dead weight.
+**Impact:** one extra prerequisite on every fresh install. Acceptable
+tradeoff for the MVP (uvx eliminates venv management entirely), but it
+*is* a real door-slam rather than a soft recommendation.
+**When to fix:** Milestone 5+ if dogfood shows users bouncing off the
+uv requirement. A `pipx run --spec <plugin-root> forge` fallback would
+cover the "already have pipx, don't want another tool" audience without
+much code. Not urgent until someone actually asks.
