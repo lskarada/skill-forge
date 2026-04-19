@@ -1,0 +1,21 @@
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.pytest_cache/
+
+# Virtual env
+.venv/
+venv/
+
+# Editor / OS
+.DS_Store
+.idea/
+.vscode/
+
+# Claude Code local
+.claude/settings.local.json
+
+# Skill-Forge runtime output (created by `forge capture` / `forge optimize`)
+.skill-forge/
