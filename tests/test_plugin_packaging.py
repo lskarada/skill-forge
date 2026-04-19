@@ -3,9 +3,14 @@
 These tests don't exercise Claude Code itself. They lock down the files that
 a stranger who runs `/plugin marketplace add lskarada/skill-forge` would see:
 
-- `.claude-plugin/plugin.json` — valid JSON, names the plugin, points at commands/.
-- `.claude-plugin/commands/forge/{capture,optimize,status}.md` — each file exists,
-  has YAML frontmatter, and shells out to the `forge` CLI.
+- `.claude-plugin/marketplace.json` — valid JSON, names the marketplace,
+  lists the `skill-forge` plugin at `./plugins/skill-forge`.
+- `plugins/skill-forge/.claude-plugin/plugin.json` — valid JSON, names the
+  plugin.
+- `plugins/skill-forge/commands/forge/{capture,optimize,status}.md` — each
+  file exists, has YAML frontmatter, and shells out to the `forge` CLI.
+  (Commands live at the plugin ROOT, per Claude Code's plugins-reference:
+  "Components must be at the plugin root, not inside .claude-plugin/.")
 
 If any of these break, the plugin is not marketplace-ready.
 """
@@ -19,8 +24,24 @@ from pathlib import Path
 import pytest
 
 REPO = Path(__file__).resolve().parents[1]
-PLUGIN_DIR = REPO / ".claude-plugin"
-COMMANDS_DIR = PLUGIN_DIR / "commands" / "forge"
+MARKETPLACE_DIR = REPO / ".claude-plugin"
+PLUGIN_ROOT = REPO / "plugins" / "skill-forge"
+PLUGIN_DIR = PLUGIN_ROOT / ".claude-plugin"
+COMMANDS_DIR = PLUGIN_ROOT / "commands" / "forge"
+
+
+def test_marketplace_manifest_exists_and_parses() -> None:
+    path = MARKETPLACE_DIR / "marketplace.json"
+    assert path.is_file(), f"missing marketplace manifest at {path}"
+    data = json.loads(path.read_text(encoding="utf-8"))
+    assert data["name"] == "skill-forge"
+    assert data["owner"]["name"], "marketplace owner.name must be set"
+    plugins = data["plugins"]
+    assert isinstance(plugins, list) and plugins, "plugins list must be non-empty"
+    entry = next((p for p in plugins if p.get("name") == "skill-forge"), None)
+    assert entry is not None, "marketplace must list the skill-forge plugin"
+    # Relative path sources must start with ./ per the marketplace spec.
+    assert entry["source"] == "./plugins/skill-forge"
 
 
 def test_plugin_manifest_exists_and_parses() -> None:
@@ -30,8 +51,6 @@ def test_plugin_manifest_exists_and_parses() -> None:
     assert data["name"] == "skill-forge"
     assert data["version"], "plugin version must be set"
     assert data["description"]
-    # Point at ./commands so Claude Code can discover slash commands.
-    assert data["commands"] == "./commands"
 
 
 def test_plugin_commands_directory_layout() -> None:
@@ -39,6 +58,16 @@ def test_plugin_commands_directory_layout() -> None:
     for name in ("capture", "optimize", "status"):
         p = COMMANDS_DIR / f"{name}.md"
         assert p.is_file(), f"missing slash command file: {p}"
+
+
+def test_commands_not_inside_claude_plugin_dir() -> None:
+    # Regression guard: Claude Code's plugins-reference says components
+    # MUST live at the plugin root, not inside `.claude-plugin/`.
+    stray = PLUGIN_DIR / "commands"
+    assert not stray.exists(), (
+        f"commands must live at plugin root ({COMMANDS_DIR}), not under "
+        f"{stray}"
+    )
 
 
 @pytest.mark.parametrize(

@@ -14,6 +14,5 @@
     "optimization",
     "regression-tests",
     "worktrees"
-  ],
-  "commands": "./commands"
+  ]
 }
