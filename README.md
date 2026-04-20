@@ -35,6 +35,29 @@ uv sync
 uv run forge --help
 ```
 
+### Upgrading (known Claude Code cache bug)
+
+Claude Code's `/plugin marketplace update` is a no-op on shallow marketplace
+clones — it won't pick up new commits from the skill-forge repo. If an upgrade
+seems stuck (e.g. you hit `No module named pytest` on a version older than
+0.1.1), nuke the cache and re-add the marketplace:
+
+```
+rm -rf ~/.claude/plugins/cache/skill-forge
+rm -rf ~/.claude/plugins/marketplaces/skill-forge
+```
+
+Then in Claude Code:
+
+```
+/plugin marketplace add lskarada/skill-forge
+/plugin install skill-forge
+```
+
+This is a Claude Code plugin-manager issue, not a skill-forge bug. Once a
+fresh install lands on your machine, subsequent upgrades are only reliable by
+repeating the nuke-and-re-add dance.
+
 ---
 
 ## Usage
