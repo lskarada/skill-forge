@@ -283,28 +283,22 @@ wheels = [
 
 [[package]]
 name = "skill-forge"
-version = "0.1.0"
+version = "0.1.1"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
     { name = "jsonschema" },
-    { name = "typer" },
-]
-
-[package.dev-dependencies]
-dev = [
     { name = "pytest" },
+    { name = "typer" },
 ]
 
 [package.metadata]
 requires-dist = [
     { name = "gitpython", specifier = ">=3.1" },
     { name = "jsonschema", specifier = ">=4.20" },
+    { name = "pytest", specifier = ">=8.0" },
     { name = "typer", specifier = ">=0.12" },
 ]
-
-[package.metadata.requires-dev]
-dev = [{ name = "pytest", specifier = ">=8.0" }]
 
 [[package]]
 name = "smmap"

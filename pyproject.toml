@@ -1,6 +1,6 @@
 [project]
 name = "skill-forge"
-version = "0.1.0"
+version = "0.1.1"
 description = "A Claude Code plugin that makes your skills and subagents self-improving."
 readme = "README.md"
 requires-python = ">=3.12"
@@ -8,6 +8,7 @@ dependencies = [
     "typer>=0.12",
     "jsonschema>=4.20",
     "gitpython>=3.1",
+    "pytest>=8.0",
 ]
 
 [project.scripts]
@@ -19,11 +20,6 @@ build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src/skill_forge"]
-
-[dependency-groups]
-dev = [
-    "pytest>=8.0",
-]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
