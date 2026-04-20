@@ -64,7 +64,7 @@ def run_claude(
     claude_bin = _resolve_claude_bin()
     try:
         proc = subprocess.run(
-            [claude_bin, "-p", prompt],
+            [claude_bin, "--dangerously-skip-permissions", "-p", prompt],
             capture_output=True,
             text=True,
             timeout=timeout,

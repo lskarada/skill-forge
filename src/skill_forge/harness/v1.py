@@ -7,6 +7,7 @@ here requires a version bump so old tests keep working indefinitely.
 
 from __future__ import annotations
 
+import inspect
 import json
 import re
 import subprocess
@@ -32,7 +33,15 @@ def run_skill(skill: str, replay: str) -> str:
 
     replay_path = Path(replay)
     if not replay_path.is_absolute():
-        replay_path = replay_path.resolve()
+        # "relative to the test file that owns it" — resolve against the
+        # caller's file dir, not cwd. Falls back to cwd if the caller frame
+        # has no resolvable file (e.g. interactive REPL).
+        caller_frame = inspect.stack()[1]
+        caller_file = caller_frame.filename
+        if caller_file and caller_file not in ("<stdin>", "<string>"):
+            replay_path = (Path(caller_file).resolve().parent / replay_path).resolve()
+        else:
+            replay_path = replay_path.resolve()
     return dispatch.run_skill(skill=skill, replay=str(replay_path))
 
 
