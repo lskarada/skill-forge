@@ -640,14 +640,14 @@ ui = [
 
 [package.metadata]
 requires-dist = [
-    { name = "fastapi", marker = "extra == 'ui'", specifier = ">=0.110" },
+    { name = "fastapi", marker = "extra == 'ui'", specifier = ">=0.110,<1" },
     { name = "gitpython", specifier = ">=3.1" },
-    { name = "httpx", marker = "extra == 'ui'", specifier = ">=0.27" },
-    { name = "jinja2", marker = "extra == 'ui'", specifier = ">=3.1" },
+    { name = "httpx", marker = "extra == 'ui'", specifier = ">=0.27,<1" },
+    { name = "jinja2", marker = "extra == 'ui'", specifier = ">=3.1,<4" },
     { name = "jsonschema", specifier = ">=4.20" },
     { name = "pytest", specifier = ">=8.0" },
     { name = "typer", specifier = ">=0.12" },
-    { name = "uvicorn", extras = ["standard"], marker = "extra == 'ui'", specifier = ">=0.27" },
+    { name = "uvicorn", extras = ["standard"], marker = "extra == 'ui'", specifier = ">=0.27,<1" },
 ]
 
 [[package]]
