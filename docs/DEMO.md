@@ -104,6 +104,19 @@ triggered the failure.
 /forge:optimize greeter --workers 3
 ```
 
+Or, with the live web dashboard (requires the `[ui]` extras):
+
+```
+pip install 'skill-forge[ui]'
+uv run forge optimize greeter --workers 3 --ui --open --yes
+```
+
+The dashboard binds 127.0.0.1 only and shows top-bar phase, baseline /
+best-so-far stats, a live workers table, and a slide-over drilldown
+(diff / transcript / tests) for every worker — including discarded ones.
+With `--yes`, the server stays alive 5 minutes after the run finishes so
+you can inspect drilldowns post-hoc; tune with `--ui-grace`.
+
 What happens, in order:
 
 1. **Baseline.** Run pytest against the current SKILL.md. Expected: the

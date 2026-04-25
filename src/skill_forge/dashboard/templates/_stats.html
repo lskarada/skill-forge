@@ -1,0 +1,31 @@
+{% set b = stats.baseline %}
+{% set best = stats.best %}
+<div class="stat" id="stat-baseline" hx-swap-oob="true">
+  <div class="label">baseline</div>
+  <div class="value mono">{% if b %}{{ b.passed }}/{{ b.failed }}/{{ b.errors }}{% else %}—{% endif %}</div>
+  <div class="sub">phase 1 of 5</div>
+</div>
+<div class="stat" id="stat-best" hx-swap-oob="true">
+  <div class="label">best so far</div>
+  <div class="value mono">{% if best %}{{ best.passed }}/{{ best.failed }}/{{ best.errors }}{% if stats.delta_pass %}<span class="delta">+{{ stats.delta_pass }} pass</span>{% endif %}{% else %}—{% endif %}</div>
+  <div class="sub">{% if best %}from <span class="mono">{% if b %}{{ b.passed }}/{{ b.failed }}/{{ b.errors }}{% else %}—{% endif %}</span> baseline{% else %}awaiting first worker{% endif %}</div>
+</div>
+<div class="stat" id="stat-merge-target" hx-swap-oob="true">
+  <div class="label">merge target</div>
+  <div class="value mono">{% if stats.merge_target %}{{ stats.merge_target }}{% else %}—{% endif %}</div>
+  <div class="sub">{% if stats.merged_count %}{{ stats.merged_count }} generation(s) merged{% else %}no merges yet{% endif %}</div>
+</div>
+<div class="stat" id="stat-workers" hx-swap-oob="true">
+  <div class="label">workers</div>
+  <div class="value">{{ counts.total }}</div>
+  <div class="sub">
+    <span class="kept">{{ counts.merged }} merged</span> ·
+    <span class="skip">{{ counts.discarded }} discarded</span> ·
+    <span class="err">{{ counts.errored }} err</span>
+  </div>
+</div>
+<div class="stat" id="stat-elapsed" hx-swap-oob="true">
+  <div class="label">elapsed</div>
+  <div class="value">{{ stats.elapsed }}</div>
+  <div class="sub">{% if running %}running now{% else %}finished{% endif %}</div>
+</div>

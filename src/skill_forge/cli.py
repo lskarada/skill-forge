@@ -119,6 +119,30 @@ def optimize(
         "strategy. If fewer strategies than workers, the list is cycled. "
         "If omitted, Skill-Forge uses the built-in default rotation.",
     ),
+    ui: bool = typer.Option(
+        False,
+        "--ui",
+        help="Boot a localhost web dashboard that streams the run. Requires "
+        "the [ui] extras: pip install 'skill-forge[ui]'.",
+    ),
+    open_browser: bool = typer.Option(
+        False,
+        "--open",
+        help="With --ui, open the dashboard in the default browser. Off by "
+        "default to avoid stealing focus on macOS.",
+    ),
+    port: int | None = typer.Option(
+        None,
+        "--port",
+        help="With --ui, bind to this port instead of auto-picking 7777-7799.",
+    ),
+    ui_grace: int = typer.Option(
+        300,
+        "--ui-grace",
+        min=0,
+        help="With --ui --yes, keep the dashboard alive for this many seconds "
+        "after RunFinished so you can inspect drilldowns. Default 300s.",
+    ),
 ) -> None:
     """Run one baseline → mutate → gate → merge/discard cycle on a skill."""
     config = OptimizeConfig(
@@ -135,9 +159,66 @@ def optimize(
         printer=typer.echo,
         prompter=lambda msg: typer.prompt(msg.rstrip(), default="", show_default=False),
     )
-    result = run_optimize(config, io)
+
+    server = None
+    if ui:
+        server = _start_dashboard_or_exit(output_root, port)
+        typer.echo(f"dashboard: http://127.0.0.1:{server.port}")
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{server.port}")
+        # State knows where to find sidecar artifacts for drilldowns.
+        from skill_forge.dashboard import state as state_mod
+        state_mod.get_state().sidecar_root = output_root  # type: ignore[attr-defined]
+
+    try:
+        result = run_optimize(config, io)
+    finally:
+        if server is not None:
+            _shutdown_dashboard(server, assume_yes=yes, grace=ui_grace)
+
     if result.outcome in {"regression", "aborted"}:
         raise typer.Exit(code=1)
+
+
+def _start_dashboard_or_exit(output_root: Path, port: int | None):
+    """Boot the dashboard, exit cleanly with a friendly error on missing
+    extras or an exhausted port range. Never let a traceback leak."""
+    from skill_forge.dashboard import DashboardExtrasMissing, require_web_extras
+    try:
+        require_web_extras()
+    except DashboardExtrasMissing as exc:
+        typer.echo(str(exc), err=True)
+        raise typer.Exit(code=2)
+
+    from skill_forge.dashboard import server as srv
+    try:
+        chosen = port if port is not None else srv.pick_free_port()
+    except srv.PortRangeExhausted as exc:
+        typer.echo(f"error: {exc}", err=True)
+        raise typer.Exit(code=2)
+
+    s = srv.DashboardServer(port=chosen)
+    s.start()
+    srv.write_port_file(output_root, s.port)
+    return s
+
+
+def _shutdown_dashboard(server, *, assume_yes: bool, grace: int) -> None:
+    """In --yes mode, hold the server alive for `grace` seconds so the
+    user can drill into a finished run. Without --yes, the foreground
+    `forge optimize` call already blocked on a prompt — the run is
+    interactive, so just stop the server and exit."""
+    import time
+    if assume_yes and grace > 0:
+        typer.echo(
+            f"dashboard alive for {grace}s; Ctrl-C to exit immediately."
+        )
+        try:
+            time.sleep(grace)
+        except KeyboardInterrupt:
+            pass
+    server.stop()
 
 
 @app.command()

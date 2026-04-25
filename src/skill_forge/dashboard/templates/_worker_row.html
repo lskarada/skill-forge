@@ -1,0 +1,26 @@
+{# Render or replace a single worker row. Used for both the initial render
+   and OOB swaps over SSE — the row's id is the swap target. #}
+<tr id="worker-{{ w.id }}" class="worker-row{% if w.merged %} kept-row{% endif %}"
+    data-worker-id="{{ w.id }}"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <td class="mono">{{ w.id }}</td>
+  <td>
+    <div class="score-cell mono">
+      {% if w.tests %}
+        <span><span class="pass">{{ w.tests.passed }}</span>/<span class="fail">{{ w.tests.failed }}</span>/{{ w.tests.errors }}</span>
+        {% if w.delta %}<span class="delta{% if w.delta < 0 %} neg{% endif %}">{% if w.delta > 0 %}+{{ w.delta }} pass{% else %}tie{% endif %}</span>{% endif %}
+      {% elif w.status == "errored" %}
+        <span class="muted">err</span>
+      {% else %}
+        <span>—</span>
+      {% endif %}
+    </div>
+  </td>
+  <td>
+    <span class="status-cell">
+      <span class="status-dot {{ w.dot_class }}"></span>
+      {{ w.status_label }}
+    </span>
+  </td>
+  <td class="hyp">{{ w.strategy }}</td>
+  <td class="muted">{{ w.phase }}</td>
+</tr>

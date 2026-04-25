@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Skill-Forge — {{ skill }}</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="/static/app.css">
+<script src="https://unpkg.com/htmx.org@1.9.12"></script>
+<script defer src="/static/app.js"></script>
+</head>
+<body>
+<div class="shell">
+
+  <div class="topbar">
+    <div class="topbar-left">
+      <div class="logo">s f<span class="dot"></span></div>
+      <div class="path mono">{{ skill }}.skill</div>
+      <span id="status-pill" class="pill {{ pill_class }}">
+        {% if running %}<span class="pulse"></span>{% endif %}
+        {{ pill_label }}
+      </span>
+    </div>
+    <div class="topbar-right">
+      <span class="mono" id="run-id">{{ run_id }}</span>
+      <span class="sep">·</span>
+      <span id="phase-label">phase {{ phase }} / 5</span>
+      <span class="sep">·</span>
+      <span>auto-refresh</span>
+    </div>
+  </div>
+
+  <div class="stats" id="stats-row">
+    {% include "_stats.html" %}
+  </div>
+
+  <div class="workers-card">
+    <div class="workers-head">
+      <h4>Workers</h4>
+      <div class="workers-filters" id="filters">
+        <span class="tag kept">merged <span id="count-merged">{{ counts.merged }}</span></span>
+        <span class="tag skip">discarded <span id="count-discarded">{{ counts.discarded }}</span></span>
+        <span class="tag err">err <span id="count-errored">{{ counts.errored }}</span></span>
+        <span class="tag active">active <span id="count-active">{{ counts.active }}</span></span>
+      </div>
+    </div>
+    <table>
+      <thead>
+        <tr>
+          <th style="width:54px;">ID</th>
+          <th style="width:140px;">TESTS</th>
+          <th style="width:130px;">STATUS</th>
+          <th>STRATEGY</th>
+          <th style="width:96px;">PHASE</th>
+        </tr>
+      </thead>
+      <tbody id="workers-body">
+        {% for w in workers %}
+          {% include "_worker_row.html" %}
+        {% endfor %}
+        {% if not workers %}
+          <tr id="workers-empty"><td colspan="5" class="muted">no workers yet</td></tr>
+        {% endif %}
+      </tbody>
+    </table>
+  </div>
+
+</div>
+
+<dialog class="slide" id="slide">
+  {% include "_slide.html" %}
+</dialog>
+
+</body>
+</html>

@@ -35,6 +35,19 @@ uv sync
 uv run forge --help
 ```
 
+Optional live web dashboard (off by default):
+
+```
+pip install 'skill-forge[ui]'           # or: uv sync --extra ui
+uv run forge optimize <skill> --workers 3 --ui --open
+```
+
+The `--ui` flag boots a localhost FastAPI server on port 7777 (auto-picks
+7778..7799 if busy; override with `--port`) that streams the live tournament:
+top-bar phase, baseline / best-so-far stats, a workers table, and a
+slide-over drilldown with diff / transcript / tests for each worker —
+including the discarded ones. Core installs without `[ui]` are unchanged.
+
 ### Upgrading (known Claude Code cache bug)
 
 Claude Code's `/plugin marketplace update` is a no-op on shallow marketplace
@@ -108,10 +121,10 @@ same mistake.
 
 ## Explicit non-goals
 
-- No dashboard. CLI only.
 - No direct Anthropic API calls. Mutations go through Claude Code subagents.
 - No LLM-as-judge. Tests are deterministic or they don't count.
 - No LangChain or agent frameworks. Thin harness, fat skills.
+- The opt-in dashboard binds 127.0.0.1 only — no auth, no remote serving.
 
 ---
 
@@ -123,6 +136,7 @@ same mistake.
 - **M4 — Plugin packaging.** Done.
 - **M5 — Polish + launch.** Demo fixture + walkthrough in
   [`docs/DEMO.md`](./docs/DEMO.md).
+- **M6 — Live web dashboard.** Opt-in `--ui` flag.
 
 ---
 

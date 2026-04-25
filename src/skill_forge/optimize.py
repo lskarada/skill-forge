@@ -28,6 +28,7 @@ from typing import Any, Callable, ContextManager, Iterator
 from skill_forge import baseline as baseline_mod
 from skill_forge import dispatch
 from skill_forge import worktree as wt_mod
+from skill_forge.dashboard import events as ev
 from skill_forge.prompts import DEFAULT_MUTATION_STRATEGY, strategies_for
 
 BRANCH_PREFIX = "skill-forge"
@@ -100,6 +101,25 @@ class WorkerResult:
 
 
 def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
+    # Single observable wrap point — emit RunStarted/RunFinished around the
+    # whole body. CLAUDE.md flags this file as "stable"; the wrap is the
+    # accepted exception because it adds zero logic. All real per-phase
+    # emits live below.
+    run_id = config.skill + "/" + config.now().strftime("%Y%m%d-%H%M%S")
+    ev.emit_event(ev.RunStarted(
+        skill=config.skill, run_id=run_id, num_workers=config.num_workers,
+    ))
+    try:
+        result = _run_optimize_inner(config, io, run_id=run_id)
+        ev.emit_event(ev.RunFinished(outcome=result.outcome))
+        return result
+    except BaseException:
+        ev.emit_event(ev.RunFinished(outcome="errored"))
+        raise
+
+
+def _run_optimize_inner(config: OptimizeConfig, io: OptimizeIO,
+                        *, run_id: str) -> OptimizeResult:
     tests_dir = _resolve_tests_dir(config)
     if not tests_dir.is_dir() or not list(tests_dir.glob("test_*.py")):
         io.printer(
@@ -115,14 +135,23 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
     if config.num_workers > 1:
         io.printer(f"workers: {config.num_workers} (parallel)")
 
+    dirty = _check_sut_clean(config.repo_path, sut_path)
+    if dirty is not None:
+        io.printer(dirty)
+        return OptimizeResult(outcome="aborted")
+
     # Phase 1: baseline -----------------------------------------------------
     io.printer("phase 1/5: baseline")
+    ev.emit_event(ev.PhaseChanged(phase=1))
     baseline_junit = _junit_path(config, suffix="baseline")
     baseline = io.pytest_runner(
         tests_dir,
         cwd=config.repo_path,
         junit_xml=baseline_junit,
     )
+    ev.emit_event(ev.BaselineCaptured(
+        passed=baseline.passed, failed=baseline.failed, errors=baseline.errors,
+    ))
     io.printer(
         f"baseline: {baseline.passed} passed, {baseline.failed} failed, "
         f"{baseline.errors} errors"
@@ -142,6 +171,7 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
             sut_path=sut_path,
             tests_dir=tests_dir,
             baseline=baseline,
+            run_id=run_id,
         )
 
     # Phase 2+3: fork worktree and mutate ----------------------------------
@@ -149,7 +179,11 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
     learnings = _read_learnings(config)
     tests_preview = _preview_tests(tests_dir)
 
+    worker_id = "w0"
+    ev.emit_event(ev.WorkerSpawned(worker_id=worker_id, strategy=config.strategy))
+
     io.printer(f"phase 2/5: forking worktree on branch {branch}")
+    ev.emit_event(ev.PhaseChanged(phase=2))
     with io.worktree_factory(
         config.repo_path, branch, base_ref="HEAD"
     ) as handle:
@@ -157,6 +191,9 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
         worktree_sut = _sut_in_worktree(sut_path, config.repo_path, handle.path)
         worktree_tests_dir = _tests_dir_in_worktree(tests_dir, config.repo_path, handle.path)
         io.printer(f"phase 3/5: spawning mutation subagent")
+        ev.emit_event(ev.PhaseChanged(phase=3))
+        ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="mutating"))
+        sut_before = worktree_sut.read_text(encoding="utf-8") if worktree_sut.is_file() else ""
         mutation_summary = io.mutator(
             sut_path=worktree_sut,
             tests_preview=tests_preview,
@@ -168,6 +205,12 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
 
         commit_sha = io.committer(handle.path, f"skill-forge: mutate {config.skill}")
         if commit_sha is None:
+            ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="discarded"))
+            _persist_worker_sidecars(
+                config=config, run_id=run_id, worker_id=worker_id,
+                sut_before=sut_before, sut_after=sut_before,
+                pytest_stdout="(no mutation; pytest not run)",
+            )
             io.printer("subagent produced no changes — discarding.")
             _append_learning(
                 config,
@@ -182,11 +225,23 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
 
         # Phase 4: regression gate -----------------------------------------
         io.printer("phase 4/5: regression gate (running tests against mutated SUT)")
+        ev.emit_event(ev.PhaseChanged(phase=4))
+        ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="testing"))
         mutated_junit = _junit_path(config, suffix="mutated")
         post = io.pytest_runner(
             worktree_tests_dir,
             cwd=handle.path,
             junit_xml=mutated_junit,
+        )
+        ev.emit_event(ev.WorkerTested(
+            worker_id=worker_id,
+            passed=post.passed, failed=post.failed, errors=post.errors,
+        ))
+        sut_after = worktree_sut.read_text(encoding="utf-8") if worktree_sut.is_file() else ""
+        _persist_worker_sidecars(
+            config=config, run_id=run_id, worker_id=worker_id,
+            sut_before=sut_before, sut_after=sut_after,
+            pytest_stdout=f"passed={post.passed} failed={post.failed} errors={post.errors}",
         )
         io.printer(
             f"mutated: {post.passed} passed, {post.failed} failed, "
@@ -196,6 +251,8 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
         # Phase 5: merge or discard ----------------------------------------
         if post.strictly_better_than(baseline):
             io.printer("phase 5/5: MERGE — mutation improved passing tests without new regressions")
+            ev.emit_event(ev.PhaseChanged(phase=5))
+            ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="done"))
             version = _next_version(config)
             evidence_path = _write_evidence(
                 config=config,
@@ -213,6 +270,8 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
                 branch,
                 message=f"skill-forge: {config.skill} v{version}",
             )
+            ev.emit_event(ev.WorkerMerged(worker_id=worker_id, new_generation=version))
+            ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="merged"))
             merge_sha = _head_sha(config.repo_path)
             io.branch_discarder(config.repo_path, branch)
             return OptimizeResult(
@@ -227,6 +286,8 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
 
         verdict = _classify_loss(baseline, post)
         io.printer(f"phase 5/5: DISCARD ({verdict})")
+        ev.emit_event(ev.PhaseChanged(phase=5))
+        ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="discarded"))
         _append_learning(
             config,
             (
@@ -332,6 +393,80 @@ def _tests_dir_in_worktree(tests_dir: Path, repo_path: Path, worktree_path: Path
     return worktree_path / relative
 
 
+def _check_sut_clean(repo_path: Path, sut_path: Path) -> str | None:
+    """Return None if the SUT path is clean in the parent repo, or a
+    user-facing error message if it's modified/staged. No-op (returns
+    None) when `repo_path` isn't a git repo at all — keeps unit tests
+    that use bare tmp_paths working without monkey-patching.
+
+    Why this matters: if SKILL.md is staged-but-uncommitted in the parent
+    repo, the Phase-5 `git merge --no-ff` step blows up with 'Your local
+    changes to the following files would be overwritten by merge'. Catch
+    it at minute 0 instead of after burning subagent API.
+    """
+    import subprocess
+    try:
+        rev = subprocess.run(
+            ["git", "rev-parse", "--is-inside-work-tree"],
+            cwd=str(repo_path), capture_output=True, text=True, check=False,
+        )
+    except FileNotFoundError:
+        # `git` not on PATH — treat as no-op rather than aborting.
+        return None
+    if rev.returncode != 0 or rev.stdout.strip() != "true":
+        return None
+    try:
+        rel = sut_path.resolve().relative_to(repo_path.resolve())
+    except ValueError:
+        # SUT lives outside the repo — nothing to check.
+        return None
+    proc = subprocess.run(
+        ["git", "status", "--porcelain", "--", str(rel)],
+        cwd=str(repo_path), capture_output=True, text=True, check=False,
+    )
+    if proc.returncode != 0 or not proc.stdout.strip():
+        return None
+    return (
+        f"{sut_path} has uncommitted changes (staged or modified). "
+        f"`git stash` or commit before running `forge optimize`, "
+        f"otherwise the Phase-5 merge will fail."
+    )
+
+
+def _persist_worker_sidecars(
+    *,
+    config: OptimizeConfig,
+    run_id: str,
+    worker_id: str,
+    sut_before: str,
+    sut_after: str,
+    pytest_stdout: str,
+) -> Path:
+    """Write a worker's diff.patch + tests.txt under
+    `<output_root>/runs/<run_id>/<worker_id>/`. Called *before* the
+    worktree is torn down so losing workers stay inspectable in the
+    Phase-4 drilldown. Persistence is unconditional — sidecars are a
+    free observability win whether or not --ui is on."""
+    import difflib
+
+    base = config.output_root / "runs" / run_id / worker_id
+    base.mkdir(parents=True, exist_ok=True)
+    diff = "".join(
+        difflib.unified_diff(
+            sut_before.splitlines(keepends=True),
+            sut_after.splitlines(keepends=True),
+            fromfile=f"a/{worker_id}/SKILL.md",
+            tofile=f"b/{worker_id}/SKILL.md",
+        )
+    )
+    if not diff:
+        # No-diff case: keep the file informative rather than blank.
+        diff = f"(no mutation produced for {worker_id})\n"
+    (base / "diff.patch").write_text(diff, encoding="utf-8")
+    (base / "tests.txt").write_text(pytest_stdout, encoding="utf-8")
+    return base
+
+
 def _hydrate_worktree(repo_path: Path, worktree_path: Path, skill: str) -> None:
     """Copy untracked .skill-forge/ artifacts into the worktree.
 
@@ -434,6 +569,7 @@ def _run_parallel(
     sut_path: Path,
     tests_dir: Path,
     baseline: baseline_mod.BaselineResult,
+    run_id: str,
 ) -> OptimizeResult:
     """Fork N worktrees, run mutations in parallel, merge the winner.
 
@@ -456,15 +592,24 @@ def _run_parallel(
 
     io.printer(f"phase 2/5: forking {config.num_workers} worktrees from {base_branch}*")
     io.printer(f"phase 3/5: spawning {config.num_workers} parallel mutation subagents")
+    ev.emit_event(ev.PhaseChanged(phase=2))
+    for i in range(config.num_workers):
+        ev.emit_event(ev.WorkerSpawned(worker_id=f"w{i}", strategy=strategies[i]))
+    ev.emit_event(ev.PhaseChanged(phase=3))
 
     def run_worker(index: int) -> WorkerResult:
         branch = f"{base_branch}/w{index}"
         strategy = strategies[index]
+        wid = f"w{index}"
         try:
+            ev.emit_event(ev.WorkerStatus(worker_id=wid, status="mutating"))
             with _locked_worktree(io, config.repo_path, branch, repo_lock) as handle:
                 _hydrate_worktree(config.repo_path, handle.path, config.skill)
                 worktree_sut = _sut_in_worktree(sut_path, config.repo_path, handle.path)
                 worktree_tests = _tests_dir_in_worktree(tests_dir, config.repo_path, handle.path)
+                sut_before = (
+                    worktree_sut.read_text(encoding="utf-8") if worktree_sut.is_file() else ""
+                )
 
                 # Claude Code hard-blocks writes under `.claude/` even with
                 # --dangerously-skip-permissions, which would otherwise make
@@ -489,6 +634,12 @@ def _run_parallel(
                     handle.path, f"skill-forge: mutate {config.skill} [w{index}]"
                 )
                 if commit_sha is None:
+                    _persist_worker_sidecars(
+                        config=config, run_id=run_id, worker_id=wid,
+                        sut_before=sut_before, sut_after=sut_before,
+                        pytest_stdout="(no diff produced; pytest skipped)",
+                    )
+                    ev.emit_event(ev.WorkerStatus(worker_id=wid, status="discarded"))
                     return WorkerResult(
                         index=index,
                         branch=branch,
@@ -497,28 +648,51 @@ def _run_parallel(
                         mutation_summary=summary,
                     )
 
-                # Capture mutated SUT length before worktree is torn down —
-                # it's the tie-breaker signal for token minimization.
-                mutated_length = len(worktree_sut.read_text(encoding="utf-8"))
+                # Capture mutated SUT length and contents before worktree teardown.
+                sut_after = worktree_sut.read_text(encoding="utf-8")
+                mutated_length = len(sut_after)
 
+                ev.emit_event(ev.WorkerStatus(worker_id=wid, status="testing"))
                 worker_junit = _junit_path(config, suffix=f"mutated_w{index}")
                 post = io.pytest_runner(
                     worktree_tests,
                     cwd=handle.path,
                     junit_xml=worker_junit,
                 )
+                ev.emit_event(ev.WorkerTested(
+                    worker_id=wid,
+                    passed=post.passed, failed=post.failed, errors=post.errors,
+                ))
+                _persist_worker_sidecars(
+                    config=config, run_id=run_id, worker_id=wid,
+                    sut_before=sut_before, sut_after=sut_after,
+                    pytest_stdout=(
+                        f"passed={post.passed} failed={post.failed} errors={post.errors}"
+                    ),
+                )
 
+            outcome = "won" if post.strictly_better_than(baseline) else "lost"
+            ev.emit_event(ev.WorkerStatus(worker_id=wid, status="done"))
             return WorkerResult(
                 index=index,
                 branch=branch,
                 strategy=strategy,
-                outcome="won" if post.strictly_better_than(baseline) else "lost",
+                outcome=outcome,
                 post=post,
                 commit_sha=commit_sha,
                 mutation_summary=summary,
                 mutated_sut_length=mutated_length,
             )
         except Exception as exc:  # noqa: BLE001 — worker-level isolation, surface as data
+            ev.emit_event(ev.WorkerStatus(worker_id=wid, status="errored"))
+            try:
+                _persist_worker_sidecars(
+                    config=config, run_id=run_id, worker_id=wid,
+                    sut_before="", sut_after="",
+                    pytest_stdout=f"worker errored before completion: {exc}",
+                )
+            except Exception:  # noqa: BLE001
+                pass
             return WorkerResult(
                 index=index,
                 branch=branch,
@@ -546,10 +720,17 @@ def _run_parallel(
     results.sort(key=lambda r: r.index)
 
     io.printer("phase 4/5: regression gate — picking the winner")
+    ev.emit_event(ev.PhaseChanged(phase=4))
     winner = _pick_winner(results, baseline)
 
     if winner is None:
         io.printer("phase 5/5: DISCARD (no worker strictly beat baseline)")
+        ev.emit_event(ev.PhaseChanged(phase=5))
+        # Mark every committed worker as discarded; "no_change" workers
+        # were already discarded at the time of zero-diff detection.
+        for r in results:
+            if r.outcome == "lost":
+                ev.emit_event(ev.WorkerStatus(worker_id=f"w{r.index}", status="discarded"))
         for r in results:
             _append_learning(config, _loss_note(r, baseline))
         # Write an evidence file summarizing the whole parallel run, even
@@ -579,7 +760,20 @@ def _run_parallel(
         f"phase 5/5: MERGE — worker {winner.index} wins "
         f"({winner.post.passed}p/{winner.post.failed}f, len={winner.mutated_sut_length})"
     )
+    ev.emit_event(ev.PhaseChanged(phase=5))
     version = _next_version(config)
+    ev.emit_event(ev.WorkerMerged(worker_id=f"w{winner.index}", new_generation=version))
+    ev.emit_event(ev.WorkerStatus(worker_id=f"w{winner.index}", status="merged"))
+    # Every non-winner is discarded — including tiebreak losers whose
+    # outcome is "won" (they strictly beat baseline but lost on shorter-
+    # SUT tiebreak). Without this, the dashboard's discarded count stays
+    # 0 even though the rows render as Discarded.
+    for r in results:
+        if r is winner:
+            continue
+        if r.outcome == "error":
+            continue  # already emitted "errored"
+        ev.emit_event(ev.WorkerStatus(worker_id=f"w{r.index}", status="discarded"))
     evidence_path = _write_parallel_evidence(
         config=config,
         sut_path=sut_path,
