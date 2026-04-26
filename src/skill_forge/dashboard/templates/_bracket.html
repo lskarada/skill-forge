@@ -39,10 +39,8 @@
     {% for w in workers %}
       {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
       {% set node_class = "bracket-node-merged" if w.merged else ("bracket-node-errored" if w.status == "errored" else ("bracket-node-active" if w.status in ["queued", "mutating", "testing"] else "bracket-node-discarded")) %}
-      <g class="bracket-child">
-        <circle cx="{{ x }}" cy="{{ child_y }}" r="14"
-                class="{{ node_class }}"
-                data-worker-id="{{ w.id }}" />
+      <g class="bracket-child" data-worker-id="{{ w.id }}" style="cursor:pointer">
+        <circle cx="{{ x }}" cy="{{ child_y }}" r="14" class="{{ node_class }}" />
         <text x="{{ x }}" y="{{ child_y + 4 }}" text-anchor="middle"
               font-family="JetBrains Mono, monospace" font-size="10"
               class="bracket-node-label">{{ w.id }}</text>

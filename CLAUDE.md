@@ -106,6 +106,48 @@ marketplace clones. Documented in `README.md` with the nuke-and-re-add
 workaround. This is a Claude Code bug, not ours — don't try to fix it
 from this repo.
 
+## Dashboard verification loop (REQUIRED for any UI change)
+
+The dashboard has end-to-end behaviour that pytest unit tests can't
+verify: SSE actually delivering OOB swaps to the live DOM, click
+handlers covering both `<tr>` rows and SVG `<g>` bracket nodes, the
+elapsed clock advancing on the heartbeat without a manual reload. Two
+real bugs slipped through to a paying user before this loop existed;
+never again.
+
+**The contract: after editing any of**
+
+- `src/skill_forge/dashboard/static/*`
+- `src/skill_forge/dashboard/templates/*`
+- `src/skill_forge/dashboard/routes.py`
+- any code path that emits dashboard events
+
+**run the browser-driven verification loop before claiming the change
+works:**
+
+```bash
+uv run pytest tests/manual/test_dashboard_browser.py -m manual -v
+```
+
+It boots a real `DashboardServer` on a free port, launches headless
+Chromium via Playwright, drives the bus through scripted events, and
+asserts the DOM mutates exactly as a real user would observe — five
+assertions, ~13 seconds. If any fail, the dashboard is broken even
+if every unit test passes. Read the assertion message; it names
+the user-observable behaviour that broke.
+
+One-time setup on a fresh clone:
+
+```bash
+uv sync --extra ui --extra ui-test
+uv run playwright install chromium
+```
+
+The Playwright suite lives under `tests/manual/` and is excluded from
+the default pytest run via `addopts = "-m 'not manual'"` in
+`pyproject.toml`. CI doesn't run it (no browser); the local loop is
+where it lives.
+
 ## When in doubt
 
 Read `SOUL.md`. It documents what "done" means for this project and

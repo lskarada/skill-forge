@@ -1,36 +1,56 @@
 // Skill-Forge dashboard — SSE consumer + slide-over wiring.
-// Keep this small. Phase-2/3 OOB swaps are handled by htmx; we only
-// glue the SSE endpoint to htmx and wire the slide-over click handler.
+//
+// htmx's hx-swap-oob processing only fires inside its own AJAX response
+// pipeline, NOT when HTML is dropped via innerHTML from an EventSource.
+// So we apply OOB swaps ourselves: parse the fragment, find every
+// [id][hx-swap-oob] element, and replace the document element with the
+// matching id. This is the live-update path; without it, the page shows
+// only its initial server-rendered snapshot.
 
 (function () {
-  // ---- SSE → htmx OOB swap ----------------------------------------
-  // Each event arrives as data:{json}\n\n. The server emits HTML
-  // fragments tagged with hx-swap-oob; we feed them straight to htmx
-  // by inserting the HTML into a hidden sink and calling process.
-  function attachSSE() {
-    const sink = document.getElementById('sse-sink') || (function () {
-      const d = document.createElement('div');
-      d.id = 'sse-sink';
-      d.hidden = true;
-      document.body.appendChild(d);
-      return d;
-    })();
+  // ---- OOB swap applier ------------------------------------------
+  function applyOobSwaps(html) {
+    // The browser's HTML parser will drop bare <tr> elements unless they
+    // sit inside <table>. Wrap fragments that look table-flavored so
+    // worker-row swaps survive parsing.
+    let wrapped = html;
+    if (/<tr[\s>]/i.test(html) && !/<table/i.test(html)) {
+      wrapped = '<table><tbody>' + html + '</tbody></table>';
+    }
+    const doc = new DOMParser().parseFromString(wrapped, 'text/html');
+    const nodes = doc.querySelectorAll('[id][hx-swap-oob]');
+    nodes.forEach((node) => {
+      const target = document.getElementById(node.id);
+      if (target) {
+        // Standard OOB: replace the live element with the new one.
+        target.replaceWith(document.adoptNode(node));
+        return;
+      }
+      // Element doesn't exist yet (e.g. first WorkerSpawned for w0).
+      // Append to the right container based on node type.
+      let container = null;
+      if (node.tagName === 'TR') {
+        container = document.getElementById('workers-body');
+        const empty = document.getElementById('workers-empty');
+        if (empty) empty.remove();
+      }
+      if (container) {
+        container.appendChild(document.adoptNode(node));
+      }
+    });
+  }
 
+  // ---- SSE → DOM update ------------------------------------------
+  function attachSSE() {
     let es = null;
     let reconnectTimer = null;
 
     function connect() {
       es = new EventSource('/events');
       es.addEventListener('html', (e) => {
-        sink.innerHTML = e.data;
-        if (window.htmx) {
-          window.htmx.process(sink);
-        }
+        applyOobSwaps(e.data);
       });
       es.onerror = () => {
-        // Native EventSource auto-reconnects, but if the browser tab
-        // was throttled or the server restarted, we want a deterministic
-        // re-open. Force-close and re-create after 1s.
         if (es && es.readyState === 2 /* CLOSED */ && !reconnectTimer) {
           reconnectTimer = setTimeout(() => {
             reconnectTimer = null;
@@ -41,9 +61,6 @@
     }
 
     connect();
-    // Also poll visibility — when the tab is foregrounded after being
-    // backgrounded for a while, browsers sometimes keep the EventSource
-    // suspended. Force a reconnect so the snapshot heartbeat re-runs.
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'visible' && es && es.readyState !== 1) {
         try { es.close(); } catch (_) {}
@@ -52,7 +69,7 @@
     });
   }
 
-  // ---- Slide-over (Phase 4) ---------------------------------------
+  // ---- Slide-over (Phase 4) — covers both <tr> rows and SVG nodes -
   function attachSlide() {
     const dlg = document.getElementById('slide');
     if (!dlg) return;
@@ -61,9 +78,16 @@
       close.addEventListener('click', () => dlg.close());
     }
     document.addEventListener('click', (e) => {
-      const tr = e.target.closest && e.target.closest('tr.worker-row');
-      if (!tr || !tr.dataset.workerId) return;
-      const wid = tr.dataset.workerId;
+      // Match ANY element carrying data-worker-id: <tr.worker-row> in
+      // the table, <g data-worker-id> in the bracket SVG, etc.
+      const tgt = e.target;
+      const node = (tgt.closest && tgt.closest('[data-worker-id]'))
+        || (tgt.getAttribute && tgt.getAttribute('data-worker-id') ? tgt : null);
+      if (!node) return;
+      const wid = node.dataset
+        ? node.dataset.workerId
+        : node.getAttribute('data-worker-id');
+      if (!wid) return;
       const title = document.getElementById('slide-title');
       if (title) title.textContent = wid;
       const tabs = document.getElementById('slide-tabs');
@@ -85,6 +109,7 @@
     });
 
     function loadTab(wid, kind, btn) {
+      const tabs = document.getElementById('slide-tabs');
       tabs.querySelectorAll('.tab').forEach((t) => t.classList.remove('active'));
       if (btn) btn.classList.add('active');
       const body = document.getElementById('slide-body');
