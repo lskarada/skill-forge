@@ -38,15 +38,20 @@ uv run forge --help
 Optional live web dashboard (off by default):
 
 ```
-pip install 'skill-forge[ui]'           # or: uv sync --extra ui
-uv run forge optimize <skill> --workers 3 --ui --open
+forge optimize <skill> --workers 3 --ui --open
 ```
 
-The `--ui` flag boots a localhost FastAPI server on port 7777 (auto-picks
-7778..7799 if busy; override with `--port`) that streams the live tournament:
-top-bar phase, baseline / best-so-far stats, a workers table, and a
-slide-over drilldown with diff / transcript / tests for each worker —
-including the discarded ones. Core installs without `[ui]` are unchanged.
+Just pass `--ui`. The wrapper detects the flag and pulls the `[ui]`
+extras (FastAPI, uvicorn, jinja2) into the same uvx env it already uses;
+no separate install step, no venv to manage. Core CLI usage stays
+lightweight — the extras only land on disk the first time you actually
+ask for the dashboard.
+
+The dashboard binds 127.0.0.1 only and auto-picks port 7777..7799
+(override with `--port`). It streams the live tournament: top-bar phase,
+baseline / best-so-far stats, a workers table, and a slide-over
+drilldown with diff / transcript / tests for each worker — including
+the discarded ones.
 
 ### Upgrading (known Claude Code cache bug)
 

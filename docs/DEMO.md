@@ -104,12 +104,14 @@ triggered the failure.
 /forge:optimize greeter --workers 3
 ```
 
-Or, with the live web dashboard (requires the `[ui]` extras):
+Or, with the live web dashboard:
 
 ```
-pip install 'skill-forge[ui]'
-uv run forge optimize greeter --workers 3 --ui --open --yes
+forge optimize greeter --workers 3 --ui --open --yes
 ```
+
+The `--ui` flag pulls the `[ui]` extras (FastAPI, uvicorn, jinja2) into
+the same uvx env automatically — no separate install step.
 
 The dashboard binds 127.0.0.1 only and shows top-bar phase, baseline /
 best-so-far stats, a live workers table, and a slide-over drilldown

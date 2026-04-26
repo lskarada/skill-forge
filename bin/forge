@@ -28,4 +28,19 @@ EOF
   exit 127
 fi
 
-exec uvx --quiet --from "$PLUGIN_ROOT" forge "$@"
+# Detect `--ui` in args and pull the [ui] extras transparently. Keeps
+# the default install lightweight (no FastAPI, no uvicorn) while letting
+# users opt into the live web dashboard with a single flag — no separate
+# `pip install` dance against an ephemeral uvx env.
+WANT_UI=0
+for arg in "$@"; do
+  case "$arg" in
+    --ui|--ui=*) WANT_UI=1 ;;
+  esac
+done
+
+if [ "$WANT_UI" = "1" ]; then
+  exec uvx --quiet --from "${PLUGIN_ROOT}[ui]" forge "$@"
+else
+  exec uvx --quiet --from "$PLUGIN_ROOT" forge "$@"
+fi
