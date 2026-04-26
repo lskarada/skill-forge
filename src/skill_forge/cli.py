@@ -14,6 +14,7 @@ from pathlib import Path
 import typer
 
 from skill_forge.capture import CaptureConfig, CaptureIO, run_capture
+from skill_forge.improve import ImproveConfig, ImproveIO, run_improve
 from skill_forge.optimize import OptimizeConfig, OptimizeIO, run_optimize
 from skill_forge.prompts import DEFAULT_MUTATION_STRATEGY
 from skill_forge.status import StatusConfig, StatusIO, run_status
@@ -219,6 +220,106 @@ def _shutdown_dashboard(server, *, assume_yes: bool, grace: int) -> None:
         except KeyboardInterrupt:
             pass
     server.stop()
+
+
+@app.command()
+def improve(
+    target: str | None = typer.Option(
+        None,
+        "--target",
+        help="Path to the SUT markdown file (e.g., .claude/skills/<name>/SKILL.md). "
+        "If omitted, the capture agent infers the skill from the transcript.",
+    ),
+    workers: int = typer.Option(
+        3,
+        "--workers",
+        "-w",
+        min=1,
+        max=16,
+        help="Number of parallel mutation workers. Default 3.",
+    ),
+    output_root: Path = typer.Option(
+        Path.cwd() / ".skill-forge",
+        "--output-root",
+        help="Root for runs/, history/, learnings.md (default: ./.skill-forge).",
+    ),
+    yes: bool = typer.Option(
+        True,
+        "--yes/--no-yes",
+        "-y",
+        help="Auto-confirm both capture-approval and mutation prompts. "
+        "Default ON for friction-free runs; pass --no-yes to confirm interactively.",
+    ),
+    ui: bool = typer.Option(
+        True,
+        "--ui/--no-ui",
+        help="Boot the live web dashboard. Default ON. Pass --no-ui for headless.",
+    ),
+    open_browser: bool = typer.Option(
+        True,
+        "--open/--no-open",
+        help="With --ui, open the dashboard in the default browser. Default ON.",
+    ),
+    port: int | None = typer.Option(
+        None,
+        "--port",
+        help="With --ui, bind to this port instead of auto-picking 7777-7799.",
+    ),
+    ui_grace: int = typer.Option(
+        300,
+        "--ui-grace",
+        min=0,
+        help="Seconds to keep the dashboard alive after RunFinished. Default 300s.",
+    ),
+    projects_dir: Path = typer.Option(
+        tx.DEFAULT_PROJECTS_DIR,
+        "--projects-dir",
+        help="Override the Claude Code projects directory.",
+    ),
+    transcript: Path | None = typer.Option(
+        None,
+        "--transcript",
+        help="Use this specific transcript JSONL instead of auto-selecting the latest.",
+    ),
+) -> None:
+    """One-call workflow: capture the latest failure, then mutate-tournament the inferred skill."""
+    config = ImproveConfig(
+        target=target,
+        repo_path=Path.cwd(),
+        output_root=output_root,
+        num_workers=workers,
+        assume_yes=yes,
+        ui=ui,
+        open_browser=open_browser,
+        ui_grace=ui_grace,
+        port=port,
+        projects_dir=projects_dir,
+        cwd=Path.cwd(),
+        transcript_path=transcript,
+    )
+
+    server = None
+    if ui:
+        server = _start_dashboard_or_exit(output_root, port)
+        typer.echo(f"dashboard: http://127.0.0.1:{server.port}")
+        if open_browser:
+            import webbrowser
+            webbrowser.open(f"http://127.0.0.1:{server.port}")
+        from skill_forge.dashboard import state as state_mod
+        state_mod.get_state().sidecar_root = output_root  # type: ignore[attr-defined]
+
+    io = ImproveIO(
+        printer=typer.echo,
+        prompter=lambda msg: typer.prompt(msg.rstrip(), default="", show_default=False),
+    )
+    try:
+        result = run_improve(config, io)
+    finally:
+        if server is not None:
+            _shutdown_dashboard(server, assume_yes=yes, grace=ui_grace)
+
+    if result.exit_code != 0:
+        raise typer.Exit(code=result.exit_code)
 
 
 @app.command()

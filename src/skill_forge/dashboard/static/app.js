@@ -68,7 +68,7 @@
       if (title) title.textContent = wid;
       const tabs = document.getElementById('slide-tabs');
       tabs.innerHTML = '';
-      ['diff', 'transcript', 'tests'].forEach((kind, i) => {
+      ['why', 'diff', 'transcript', 'tests'].forEach((kind, i) => {
         const b = document.createElement('button');
         b.type = 'button';
         b.className = 'tab' + (i === 0 ? ' active' : '');
@@ -76,7 +76,7 @@
         b.addEventListener('click', () => loadTab(wid, kind, b));
         tabs.appendChild(b);
       });
-      loadTab(wid, 'diff', tabs.querySelector('.tab'));
+      loadTab(wid, 'why', tabs.querySelector('.tab'));
       if (typeof dlg.showModal === 'function') {
         dlg.showModal();
       } else {

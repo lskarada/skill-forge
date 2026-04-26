@@ -18,6 +18,7 @@ from __future__ import annotations
 import re
 import shutil
 import threading
+import time
 from concurrent.futures import ThreadPoolExecutor, as_completed
 from contextlib import contextmanager
 from dataclasses import dataclass, field
@@ -29,6 +30,7 @@ from skill_forge import baseline as baseline_mod
 from skill_forge import dispatch
 from skill_forge import worktree as wt_mod
 from skill_forge.dashboard import events as ev
+from skill_forge.dashboard import state as dashboard_state
 from skill_forge.prompts import DEFAULT_MUTATION_STRATEGY, strategies_for
 
 BRANCH_PREFIX = "skill-forge"
@@ -106,6 +108,14 @@ def run_optimize(config: OptimizeConfig, io: OptimizeIO) -> OptimizeResult:
     # accepted exception because it adds zero logic. All real per-phase
     # emits live below.
     run_id = config.skill + "/" + config.now().strftime("%Y%m%d-%H%M%S")
+    # Resolve the bracket parent label from history so the dashboard's
+    # bracket header shows "v2" or "baseline" rather than just "—".
+    try:
+        dashboard_state.get_state().parent_label = (
+            dashboard_state.resolve_parent_label(config.output_root, config.skill)
+        )
+    except Exception:  # noqa: BLE001 — never let a label-lookup crash a run
+        pass
     ev.emit_event(ev.RunStarted(
         skill=config.skill, run_id=run_id, num_workers=config.num_workers,
     ))
@@ -180,7 +190,9 @@ def _run_optimize_inner(config: OptimizeConfig, io: OptimizeIO,
     tests_preview = _preview_tests(tests_dir)
 
     worker_id = "w0"
-    ev.emit_event(ev.WorkerSpawned(worker_id=worker_id, strategy=config.strategy))
+    ev.emit_event(ev.WorkerSpawned(
+        worker_id=worker_id, strategy=config.strategy, spawned_at=time.monotonic(),
+    ))
 
     io.printer(f"phase 2/5: forking worktree on branch {branch}")
     ev.emit_event(ev.PhaseChanged(phase=2))
@@ -253,6 +265,16 @@ def _run_optimize_inner(config: OptimizeConfig, io: OptimizeIO,
             io.printer("phase 5/5: MERGE — mutation improved passing tests without new regressions")
             ev.emit_event(ev.PhaseChanged(phase=5))
             ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="done"))
+            # Single-worker why.txt — synthesize a WorkerResult so we can reuse _win_note.
+            _serial_result = WorkerResult(
+                index=0, branch=branch, strategy=config.strategy, outcome="won",
+                post=post, mutation_summary=mutation_summary,
+                mutated_sut_length=len(sut_after),
+            )
+            _why = config.output_root / "runs" / run_id / "w0" / "why.txt"
+            _why.parent.mkdir(parents=True, exist_ok=True)
+            _why.write_text(_win_note(_serial_result, [_serial_result], baseline),
+                            encoding="utf-8")
             version = _next_version(config)
             evidence_path = _write_evidence(
                 config=config,
@@ -288,6 +310,13 @@ def _run_optimize_inner(config: OptimizeConfig, io: OptimizeIO,
         io.printer(f"phase 5/5: DISCARD ({verdict})")
         ev.emit_event(ev.PhaseChanged(phase=5))
         ev.emit_event(ev.WorkerStatus(worker_id=worker_id, status="discarded"))
+        _serial_lost = WorkerResult(
+            index=0, branch=branch, strategy=config.strategy, outcome="lost",
+            post=post, mutation_summary=mutation_summary,
+        )
+        _why = config.output_root / "runs" / run_id / "w0" / "why.txt"
+        _why.parent.mkdir(parents=True, exist_ok=True)
+        _why.write_text(_loss_note(_serial_lost, baseline) + "\n", encoding="utf-8")
         _append_learning(
             config,
             (
@@ -391,6 +420,40 @@ def _tests_dir_in_worktree(tests_dir: Path, repo_path: Path, worktree_path: Path
         # tests_dir is outside the repo — fall back to the original path.
         return tests_dir
     return worktree_path / relative
+
+
+def _win_note(winner: "WorkerResult",
+              results: list["WorkerResult"],
+              baseline: baseline_mod.BaselineResult) -> str:
+    """Human-readable explanation of why this worker merged. Emitted to
+    why.txt and read by the dashboard slide-over's "Why" tab."""
+    if winner.post is None:
+        return f"Merged: w{winner.index} (no post-mutation counts available)."
+    delta = winner.post.passed - baseline.passed
+    pieces = [
+        f"Merged: {winner.post.passed}/{winner.post.failed}/{winner.post.errors} "
+        f"(p/f/e) — beat baseline by +{delta} pass."
+    ]
+    # If multiple workers tied on pass count, call out the SUT-length tiebreak.
+    co_winners = [
+        r for r in results
+        if r is not winner
+        and r.post is not None
+        and r.outcome == "won"
+        and r.post.passed == winner.post.passed
+        and (r.post.failed + r.post.errors) == (winner.post.failed + winner.post.errors)
+    ]
+    if co_winners and winner.mutated_sut_length is not None:
+        other_lens = sorted(
+            r.mutated_sut_length for r in co_winners if r.mutated_sut_length is not None
+        )
+        pieces.append(
+            f"Won the SUT-length tiebreak ({winner.mutated_sut_length} chars vs "
+            f"{', '.join(str(n) for n in other_lens)})."
+        )
+    if winner.strategy:
+        pieces.append(f"Strategy: {winner.strategy}")
+    return " ".join(pieces) + "\n"
 
 
 def _check_sut_clean(repo_path: Path, sut_path: Path) -> str | None:
@@ -593,8 +656,11 @@ def _run_parallel(
     io.printer(f"phase 2/5: forking {config.num_workers} worktrees from {base_branch}*")
     io.printer(f"phase 3/5: spawning {config.num_workers} parallel mutation subagents")
     ev.emit_event(ev.PhaseChanged(phase=2))
+    spawn_time = time.monotonic()
     for i in range(config.num_workers):
-        ev.emit_event(ev.WorkerSpawned(worker_id=f"w{i}", strategy=strategies[i]))
+        ev.emit_event(ev.WorkerSpawned(
+            worker_id=f"w{i}", strategy=strategies[i], spawned_at=spawn_time,
+        ))
     ev.emit_event(ev.PhaseChanged(phase=3))
 
     def run_worker(index: int) -> WorkerResult:
@@ -722,6 +788,19 @@ def _run_parallel(
     io.printer("phase 4/5: regression gate — picking the winner")
     ev.emit_event(ev.PhaseChanged(phase=4))
     winner = _pick_winner(results, baseline)
+
+    # Write per-worker why.txt now that the picker has resolved. The
+    # diff.patch and tests.txt sidecars were written earlier (before
+    # worktree teardown); why.txt has to wait until after _pick_winner
+    # because the "Why" reasoning depends on knowing winner vs. loser.
+    for r in results:
+        why_text = (
+            _win_note(r, results, baseline) if r is winner
+            else _loss_note(r, baseline) + "\n"
+        )
+        why_path = config.output_root / "runs" / run_id / f"w{r.index}" / "why.txt"
+        why_path.parent.mkdir(parents=True, exist_ok=True)
+        why_path.write_text(why_text, encoding="utf-8")
 
     if winner is None:
         io.printer("phase 5/5: DISCARD (no worker strictly beat baseline)")

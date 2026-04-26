@@ -101,6 +101,27 @@ def test_errored_worker_does_not_set_tests() -> None:
     assert state.workers["w0"].status == "errored"
 
 
+def test_elapsed_string_format(monkeypatch) -> None:
+    """Phase-B gate B.1 — snapshot returns per-worker elapsed strings
+    formatted as 'Ns' under 60s, otherwise 'Mm SSs'."""
+    state = state_mod.RunState()
+    state.apply(ev.RunStarted(skill="x", run_id="r", num_workers=2))
+    state.apply(ev.WorkerSpawned(worker_id="w0", strategy="a", spawned_at=100.0))
+    state.apply(ev.WorkerSpawned(worker_id="w1", strategy="b", spawned_at=10.0))
+
+    # Patch state.time so asyncio internals are untouched.
+    class _FakeTime:
+        @staticmethod
+        def monotonic() -> float:
+            return 105.0
+    monkeypatch.setattr(state_mod, "time", _FakeTime)
+    snap = state.snapshot()
+    by_id = {w["id"]: w for w in snap["workers"]}
+    assert by_id["w0"]["elapsed"] == "5s"
+    # w1 spawned 95s ago (105 - 10) → "1m35s"
+    assert by_id["w1"]["elapsed"] == "1m35s"
+
+
 def test_run_finished_flips_running_false() -> None:
     state = state_mod.RunState()
     state.apply(ev.RunStarted(skill="x", run_id="r", num_workers=1))

@@ -66,6 +66,10 @@ def register(app: FastAPI, *, bus: ev.EventBus, state: state_mod.RunState) -> No
 
     # ---- drilldown fragments (Phase 4) --------------------------------
 
+    @app.get("/workers/{worker_id}/why", response_class=HTMLResponse)
+    def why(worker_id: str) -> HTMLResponse:
+        return _drilldown_fragment(state, worker_id, "why.txt")
+
     @app.get("/workers/{worker_id}/diff", response_class=HTMLResponse)
     def diff(worker_id: str) -> HTMLResponse:
         return _drilldown_fragment(state, worker_id, "diff.patch")
@@ -98,6 +102,7 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
     snap = state.snapshot()
     yield _format_sse("html", env.get_template("_stats.html").render(**snap))
     yield _format_sse("html", _render_workers_oob(env, snap))
+    yield _format_sse("html", env.get_template("_bracket.html").render(hx_oob=True, **snap))
     try:
         while True:
             if stop_event is not None and stop_event.is_set():
@@ -118,6 +123,10 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
                     "html", env.get_template("_stats.html").render(**snap)
                 )
                 yield _format_sse("html", _render_workers_oob(env, snap))
+                yield _format_sse(
+                    "html",
+                    env.get_template("_bracket.html").render(hx_oob=True, **snap),
+                )
                 continue
             snap = state.snapshot()
             fragments = _fragments_for_event(env, evt, snap)
@@ -163,9 +172,9 @@ def _fragments_for_event(env: Environment, evt: object, snap: dict) -> list[str]
                 out.append(
                     env.get_template("_worker_row.html").render(w=view, hx_oob=True)
                 )
-    elif kind == "BaselineCaptured" or kind == "RunStarted" or kind == "RunFinished":
-        # Stats already covers it.
-        pass
+        # Bracket re-renders on any worker-level transition so the SVG
+        # nodes and edges stay in sync.
+        out.append(env.get_template("_bracket.html").render(hx_oob=True, **snap))
     return out
 
 

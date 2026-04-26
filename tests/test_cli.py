@@ -105,6 +105,16 @@ def test_optimize_help_shows_flags() -> None:
         assert flag in result.output
 
 
+def test_improve_help_shows_friction_free_flags() -> None:
+    """Phase-A gate A.2 — `forge improve --help` exits 0 and lists the
+    --no-* flags that disable the friction-free defaults."""
+    result = runner.invoke(app, ["improve", "--help"])
+    assert result.exit_code == 0
+    # Override pairs:
+    for flag in ("--no-ui", "--no-open", "--no-yes", "--workers", "--target"):
+        assert flag in result.output, f"missing flag in help: {flag!r}"
+
+
 def test_optimize_invokes_run_optimize(tmp_path: Path, monkeypatch) -> None:
     calls: dict[str, Any] = {}
 

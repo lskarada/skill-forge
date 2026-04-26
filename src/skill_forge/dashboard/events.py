@@ -58,6 +58,7 @@ class BaselineCaptured:
 class WorkerSpawned:
     worker_id: str
     strategy: str
+    spawned_at: float = 0.0  # time.monotonic() snapshot for elapsed-clock
     kind: str = "WorkerSpawned"
 
 

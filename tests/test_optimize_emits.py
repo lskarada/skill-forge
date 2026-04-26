@@ -174,6 +174,34 @@ def test_aborts_when_sut_has_staged_changes(tmp_path: Path, monkeypatch) -> None
     assert "uncommitted" in joined.lower() or "stash" in joined.lower()
 
 
+def test_win_note_explains_tiebreak(tmp_path: Path) -> None:
+    """Phase-B gate B.1 — winner's why.txt mentions both the
+    pass-count delta and the SUT-length tiebreak; losers' why.txt
+    contains the existing `_loss_note` content."""
+    config, calls, sut_path = _setup(tmp_path, num_workers=3)
+    plans = [
+        {"index": 0, "post_counts": (2, 0, 0), "body": "x" * 60 + "\n"},  # long loser
+        {"index": 1, "post_counts": (2, 0, 0), "body": "short\n"},  # winner
+        {"index": 2, "post_counts": (2, 0, 0), "body": "x" * 30 + "\n"},  # mid
+    ]
+    io = _make_io(calls, sut_path=sut_path, baseline_counts=(1, 1, 0), worker_plans=plans)
+    result = opt_mod.run_optimize(config, io)
+    assert result.outcome == "merged"
+
+    runs_root = config.output_root / "runs"
+    # Winner why.txt
+    w1_why = next(runs_root.glob("**/w1/why.txt"))
+    text = w1_why.read_text()
+    assert "Merged" in text or "merged" in text
+    assert "+1 pass" in text or "by 1" in text or "passed" in text
+    # SUT-length tiebreak language
+    assert "char" in text.lower() or "length" in text.lower() or "tiebreak" in text.lower()
+    # Loser why.txt — uses _loss_note's "runner-up" phrasing
+    w0_why = next(runs_root.glob("**/w0/why.txt"))
+    loss = w0_why.read_text()
+    assert "runner-up" in loss.lower() or "tiebreak" in loss.lower() or "lost" in loss.lower()
+
+
 def test_no_subscribers_zero_cost() -> None:
     """Phase-3 gate 3.2 — emit_event() with no bound loop is a true
     no-op. Cheap enough to live unconditionally in the optimize loop."""

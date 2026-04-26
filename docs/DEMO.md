@@ -98,13 +98,27 @@ Review the drafted test. If the assertions are what you want, approve.
 Skill-Forge writes the test and a snapshot of the conversation that
 triggered the failure.
 
-### 3. Optimize
+### 3. Improve (recommended)
 
 ```
+/forge:improve
+```
+
+The one-call command chains capture → optimize with `--workers 3 --ui
+--open --yes` baked in. It reads the latest Claude Code transcript,
+infers which skill misbehaved, drafts and writes a regression test,
+boots the live dashboard in your browser, and merges the winning
+mutation. Override any default with `--no-ui`, `--no-open`, `--no-yes`,
+or `--target`.
+
+If you want the two steps separately:
+
+```
+/forge:capture --target .claude/skills/greeter/SKILL.md
 /forge:optimize greeter --workers 3
 ```
 
-Or, with the live web dashboard:
+Or with the dashboard explicitly:
 
 ```
 forge optimize greeter --workers 3 --ui --open --yes

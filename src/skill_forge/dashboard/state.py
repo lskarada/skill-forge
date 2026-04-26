@@ -16,9 +16,11 @@ workers do NOT fire `WorkerTested` — UI knows to render `err`.
 
 from __future__ import annotations
 
+import re
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Optional
 
 from skill_forge.dashboard import events as ev
@@ -40,6 +42,7 @@ class WorkerView:
     tests: Optional[TestCounts] = None
     delta_pass: Optional[int] = None  # vs. baseline
     merged: bool = False  # convenience flag for kept-row CSS
+    spawned_at: Optional[float] = None  # time.monotonic at spawn (for live clock)
 
 
 @dataclass
@@ -70,6 +73,8 @@ class RunState:
         self.best: Optional[TestCounts] = None
         self.merge_target: Optional[str] = None
         self.merged_count: int = 0
+        # Phase C: bracket parent label, e.g. "baseline" or "v2".
+        self.parent_label: str = "baseline"
 
     # ---- event ingest ------------------------------------------------
 
@@ -101,6 +106,7 @@ class RunState:
                 strategy=getattr(evt, "strategy", ""),
                 status="queued",
                 phase="queued",
+                spawned_at=getattr(evt, "spawned_at", None) or None,
             )
         elif kind == "WorkerStatus":
             wid = evt.worker_id  # type: ignore[attr-defined]
@@ -146,7 +152,8 @@ class RunState:
                 merged_count=self.merged_count,
                 elapsed=elapsed,
             )
-            workers = [_worker_view_for_render(w) for w in _sorted_workers(self.workers)]
+            now = time.monotonic()
+            workers = [_worker_view_for_render(w, now) for w in _sorted_workers(self.workers)]
             return {
                 "skill": self.skill or "skill",
                 "run_id": self.run_id or "—",
@@ -157,6 +164,7 @@ class RunState:
                 "stats": stats,
                 "counts": counts,
                 "workers": workers,
+                "parent_label": self.parent_label,
             }
 
     def _elapsed_locked(self) -> str:
@@ -183,6 +191,26 @@ class RunState:
             "errored": errored,
             "active": active,
         }
+
+
+def resolve_parent_label(output_root: Path, skill: str) -> str:
+    """Return the highest existing version label under
+    `<output_root>/history/<skill>/` (e.g. 'v2'), else 'baseline'.
+
+    Used by `forge optimize`/`forge improve` at run start to label the
+    parent node in the dashboard bracket. Read-only — never writes.
+    """
+    history = output_root / "history" / skill
+    if not history.is_dir():
+        return "baseline"
+    versions: list[int] = []
+    for p in history.iterdir():
+        m = re.match(r"v(\d+)_evidence\.md$", p.name)
+        if m:
+            versions.append(int(m.group(1)))
+    if not versions:
+        return "baseline"
+    return f"v{max(versions)}"
 
 
 def _phase_label(status: str) -> str:
@@ -222,7 +250,13 @@ def _sorted_workers(workers: dict[str, WorkerView]) -> list[WorkerView]:
     return sorted(workers.values(), key=order)
 
 
-def _worker_view_for_render(w: WorkerView) -> dict:
+def _format_elapsed(seconds: int) -> str:
+    if seconds < 60:
+        return f"{seconds}s"
+    return f"{seconds // 60}m{seconds % 60}s"
+
+
+def _worker_view_for_render(w: WorkerView, now: float | None = None) -> dict:
     dot = {
         "queued": "active", "mutating": "active", "testing": "active",
         "merged": "kept",
@@ -238,6 +272,10 @@ def _worker_view_for_render(w: WorkerView) -> dict:
         "discarded": "Discarded",
         "errored": "Errored",
     }.get(w.status, w.status)
+    if w.spawned_at is not None and now is not None:
+        elapsed = _format_elapsed(max(0, int(now - w.spawned_at)))
+    else:
+        elapsed = "—"
     return {
         "id": w.id,
         "strategy": w.strategy or "",
@@ -248,6 +286,7 @@ def _worker_view_for_render(w: WorkerView) -> dict:
         "merged": w.merged,
         "dot_class": dot,
         "status_label": label,
+        "elapsed": elapsed,
     }
 
 

@@ -1,0 +1,56 @@
+{# Phase C — single-round bracket (NOT a multi-gen tree).
+   Parent at top center; N child workers fan below. Click a node →
+   existing slide-over handler picks up `data-worker-id`. #}
+{% set n = workers|length %}
+{% set width = 760 %}
+{% set padding_x = 60 %}
+{% set step = (width - 2 * padding_x) / (n - 1 if n > 1 else 1) %}
+{% set parent_x = width / 2 %}
+{% set parent_y = 50 %}
+{% set child_y = 170 %}
+<div id="bracket" class="bracket-card"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <div class="bracket-head">
+    <h4>Bracket</h4>
+    <div class="bracket-sub">parent → {{ n }} parallel mutation{{ "s" if n != 1 else "" }} · click a node to inspect</div>
+  </div>
+  <svg class="bracket-svg" viewBox="0 0 {{ width }} 230" preserveAspectRatio="xMidYMid meet">
+    {# Edges first so nodes render on top #}
+    {% for w in workers %}
+      {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
+      {% set edge_class = "bracket-edge-merged" if w.merged else ("bracket-edge-errored" if w.status == "errored" else ("bracket-edge-active" if w.status in ["queued", "mutating", "testing"] else "bracket-edge-discarded")) %}
+      <path class="{{ edge_class }}"
+            d="M{{ parent_x }},{{ parent_y + 20 }}
+               C{{ parent_x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ child_y - 20 }}"
+            fill="none" />
+    {% endfor %}
+
+    {# Parent node #}
+    <g class="bracket-parent">
+      <circle cx="{{ parent_x }}" cy="{{ parent_y }}" r="18" />
+      <text x="{{ parent_x }}" y="{{ parent_y + 4 }}" text-anchor="middle"
+            font-family="JetBrains Mono, monospace" font-size="11">{{ parent_label }}</text>
+      {% if stats.baseline %}
+      <text x="{{ parent_x }}" y="{{ parent_y - 28 }}" text-anchor="middle"
+            font-size="10" class="bracket-meta">{{ stats.baseline.passed }}/{{ stats.baseline.failed }}/{{ stats.baseline.errors }}</text>
+      {% endif %}
+    </g>
+
+    {# Child nodes #}
+    {% for w in workers %}
+      {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
+      {% set node_class = "bracket-node-merged" if w.merged else ("bracket-node-errored" if w.status == "errored" else ("bracket-node-active" if w.status in ["queued", "mutating", "testing"] else "bracket-node-discarded")) %}
+      <g class="bracket-child">
+        <circle cx="{{ x }}" cy="{{ child_y }}" r="14"
+                class="{{ node_class }}"
+                data-worker-id="{{ w.id }}" />
+        <text x="{{ x }}" y="{{ child_y + 4 }}" text-anchor="middle"
+              font-family="JetBrains Mono, monospace" font-size="10"
+              class="bracket-node-label">{{ w.id }}</text>
+        {% if w.tests %}
+        <text x="{{ x }}" y="{{ child_y + 32 }}" text-anchor="middle"
+              font-size="10" class="bracket-meta">{{ w.tests.passed }}/{{ w.tests.failed }}/{{ w.tests.errors }}</text>
+        {% endif %}
+      </g>
+    {% endfor %}
+  </svg>
+</div>

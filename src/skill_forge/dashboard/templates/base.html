@@ -35,6 +35,8 @@
     {% include "_stats.html" %}
   </div>
 
+  {% include "_bracket.html" %}
+
   <div class="workers-card">
     <div class="workers-head">
       <h4>Workers</h4>
@@ -53,6 +55,7 @@
           <th style="width:130px;">STATUS</th>
           <th>STRATEGY</th>
           <th style="width:96px;">PHASE</th>
+          <th style="width:64px;">ELAPSED</th>
         </tr>
       </thead>
       <tbody id="workers-body">
@@ -60,7 +63,7 @@
           {% include "_worker_row.html" %}
         {% endfor %}
         {% if not workers %}
-          <tr id="workers-empty"><td colspan="5" class="muted">no workers yet</td></tr>
+          <tr id="workers-empty"><td colspan="6" class="muted">no workers yet</td></tr>
         {% endif %}
       </tbody>
     </table>

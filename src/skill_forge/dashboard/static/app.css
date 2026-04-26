@@ -54,22 +54,25 @@ html, body {
 .topbar-right .sep { color: var(--ink-4); }
 .topbar-right .mono { color: var(--ink-2); }
 
-/* Stats row */
+/* Stats row — hero-metrics: looser spacing, taller numerals, monospace pop */
 .stats { display: grid; grid-template-columns: repeat(5, 1fr); gap: 0;
-  padding: 22px 0 26px; border-bottom: 1px solid var(--border); }
-.stat { padding: 0 28px; border-left: 1px solid var(--border-soft); }
+  padding: 32px 0 36px; border-bottom: 1px solid var(--border); }
+.stat { padding: 0 36px; border-left: 1px solid var(--border-soft); }
 .stat:first-child { padding-left: 0; border-left: none; }
-.stat .label { font-size: 10.5px; letter-spacing: .14em; color: var(--ink-3);
-  font-weight: 500; text-transform: uppercase; margin-bottom: 8px; }
-.stat .value { font-size: 30px; font-weight: 700; letter-spacing: -.01em;
-  line-height: 1; display: flex; align-items: baseline; gap: 8px; }
+.stat .label { font-size: 10px; letter-spacing: .18em; color: var(--ink-3);
+  font-weight: 600; text-transform: uppercase; margin-bottom: 14px; }
+.stat .value { font-size: 38px; font-weight: 700; letter-spacing: -.02em;
+  line-height: 1; display: flex; align-items: baseline; gap: 10px; }
+.stat .value.mono { font-family: "JetBrains Mono", "SF Mono", Menlo, monospace;
+  font-weight: 500; }
 .stat .value.blue { color: var(--blue); }
-.stat .delta { font-size: 12px; font-weight: 500; color: var(--blue); }
-.stat .delta.neg { color: var(--coral); }
-.stat .sub { margin-top: 8px; font-size: 11.5px; color: var(--ink-3); }
-.stat .sub .kept { color: var(--blue); }
+.stat .delta { font-size: 13px; font-weight: 500; color: var(--blue);
+  background: var(--blue-soft); padding: 2px 8px; border-radius: 4px; }
+.stat .delta.neg { color: var(--coral); background: var(--coral-soft); }
+.stat .sub { margin-top: 12px; font-size: 11.5px; color: var(--ink-3); }
+.stat .sub .kept { color: var(--blue); font-weight: 500; }
 .stat .sub .skip { color: var(--ink-3); }
-.stat .sub .err { color: var(--coral); }
+.stat .sub .err { color: var(--coral); font-weight: 500; }
 
 /* Section title */
 .section-title { font-size: 12px; font-weight: 600; letter-spacing: .02em;
@@ -81,12 +84,19 @@ html, body {
 .workers-head { display: flex; align-items: center; justify-content: space-between;
   padding: 14px 20px; border-bottom: 1px solid var(--border-soft); }
 .workers-head h4 { margin: 0; font-size: 12.5px; font-weight: 600; }
-.workers-filters { display: flex; gap: 6px; }
-.tag { font-size: 10.5px; padding: 2px 8px; border-radius: 999px; font-weight: 500; }
+.workers-filters { display: flex; gap: 8px; }
+.tag { font-size: 11px; padding: 3px 10px; border-radius: 999px; font-weight: 600;
+  letter-spacing: .02em; display: inline-flex; align-items: center; gap: 6px; }
+.tag::before { content: ""; width: 6px; height: 6px; border-radius: 50%; }
 .tag.kept { background: var(--blue-soft); color: var(--blue); }
-.tag.skip { background: #f1ede3; color: #8a8a8a; }
+.tag.kept::before { background: var(--blue); }
+.tag.skip { background: #f1ede3; color: #6a6a6a; }
+.tag.skip::before { background: var(--ink-4); }
 .tag.err { background: var(--coral-soft); color: var(--coral); }
+.tag.err::before { background: var(--coral); }
 .tag.active { background: #e7f0fe; color: var(--blue-2); }
+.tag.active::before { background: var(--blue-2);
+  box-shadow: 0 0 0 0 rgba(79, 127, 214, .5); animation: pulse 1.6s infinite; }
 table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 thead th { text-align: left; padding: 10px 20px; font-size: 10.5px;
   letter-spacing: .12em; color: var(--ink-3); font-weight: 500;
@@ -113,6 +123,32 @@ tbody tr.worker-row:hover { background: #faf8f3; }
 .muted { color: var(--ink-3); }
 .fail { color: var(--coral); }
 .pass { color: var(--blue); }
+
+/* Bracket (Phase C) */
+.bracket-card { background: var(--card); border: 1px solid var(--border);
+  border-radius: 8px; margin-top: 18px; padding: 18px 20px; }
+.bracket-head { display: flex; align-items: baseline; justify-content: space-between;
+  margin-bottom: 8px; }
+.bracket-head h4 { margin: 0; font-size: 12.5px; font-weight: 600; }
+.bracket-sub { color: var(--ink-3); font-size: 11px; }
+.bracket-svg { width: 100%; height: 230px; }
+.bracket-meta { fill: var(--ink-3); font-family: "JetBrains Mono", "SF Mono", Menlo, monospace; }
+
+.bracket-parent circle { fill: #fff; stroke: var(--ink-3); stroke-width: 1.4; }
+.bracket-parent text { fill: var(--ink-2); }
+
+.bracket-node-merged { fill: var(--blue); stroke: var(--blue); stroke-width: 1.6;
+  cursor: pointer; }
+.bracket-node-discarded { fill: var(--ink-4); stroke: var(--ink-4); cursor: pointer; }
+.bracket-node-errored { fill: var(--coral); stroke: var(--coral); cursor: pointer; }
+.bracket-node-active { fill: #fff; stroke: var(--blue-2); stroke-width: 1.6;
+  stroke-dasharray: 3,3; cursor: pointer; }
+.bracket-child .bracket-node-merged + text { fill: #fff; }
+
+.bracket-edge-merged { stroke: var(--blue); stroke-width: 2; }
+.bracket-edge-discarded { stroke: var(--border); stroke-width: 1.4; }
+.bracket-edge-errored { stroke: var(--coral); stroke-width: 1.4; stroke-dasharray: 3,3; }
+.bracket-edge-active { stroke: var(--blue-line); stroke-width: 1.4; stroke-dasharray: 3,3; }
 
 /* Slide-over drilldown (Phase 4) */
 dialog.slide {

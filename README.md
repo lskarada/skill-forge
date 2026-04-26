@@ -80,27 +80,37 @@ repeating the nuke-and-re-add dance.
 
 ## Usage
 
-Three slash commands:
+Four slash commands:
 
 | Command             | What it does                                                        |
 | ------------------- | ------------------------------------------------------------------- |
-| `/forge:capture`    | Read the last session, draft a pytest regression test, gate on Y/N. |
-| `/forge:optimize`   | baseline → fork N worktrees → mutate → regression-gate → merge.     |
+| `/forge:improve`    | One-call workflow — capture + optimize chained with friction-free defaults. |
+| `/forge:capture`    | Just capture: read the last session, draft a pytest regression test, gate on Y/N. |
+| `/forge:optimize`   | Just optimize: baseline → fork N worktrees → mutate → regression-gate → merge. |
 | `/forge:status`     | Show tracked skills, pending tests, merged runs, learnings size.    |
 
-Typical loop:
+Recommended loop (one command):
 
 ```
-# Your skill just misbehaved. Capture it.
+# Your skill just misbehaved. Run improve.
+/forge:improve
+
+# (or) target it explicitly:
+/forge:improve --target .claude/skills/data-extraction/SKILL.md
+```
+
+Improve chains capture → optimize with `--workers 3 --ui --open --yes` baked
+in: it reads the latest transcript, infers which skill misbehaved, drafts a
+regression test under `.skill-forge/tests/<skill>/`, opens the live web
+dashboard in your browser, and runs the mutation tournament. The merged
+winner lands on your branch. Pass `--no-ui`, `--no-open`, or `--no-yes` to
+override any default.
+
+For more control, run capture and optimize separately:
+
+```
 /forge:capture --target .claude/skills/data-extraction/SKILL.md
-
-# Review the drafted test. Approve if it's right.
-# Test lands in .skill-forge/tests/data-extraction/test_<ts>.py
-
-# Now run the mutation tournament. 5 parallel worktrees.
 /forge:optimize data-extraction --workers 5
-
-# Check what shipped.
 /forge:status
 ```
 
@@ -142,6 +152,9 @@ same mistake.
 - **M5 — Polish + launch.** Demo fixture + walkthrough in
   [`docs/DEMO.md`](./docs/DEMO.md).
 - **M6 — Live web dashboard.** Opt-in `--ui` flag.
+- **M7 — One-call workflow + bracket UI.** `/forge:improve` chains capture +
+  optimize; dashboard adds live elapsed clock, "Why" reasoning tab, and a
+  bracket diagram of each round.
 
 ---
 
