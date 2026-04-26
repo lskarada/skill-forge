@@ -47,7 +47,9 @@ def test_index_renders_mockup(client: TestClient) -> None:
 
 
 def test_port_picker_increments_when_default_taken(monkeypatch) -> None:
-    """Phase-1 gate 1.2 — port 7777 in use → picker returns 7778."""
+    """Phase-1 gate 1.2 — first port in range is in use → picker returns
+    the next free one. Uses a high port range so the test doesn't fight
+    a real dashboard process on 7777."""
     import socket
 
     occupied = []
@@ -62,11 +64,15 @@ def test_port_picker_increments_when_default_taken(monkeypatch) -> None:
         except OSError:
             return False
 
-    # Hold 7777.
-    assert _try_bind(7777)
+    # Pick a high port range that's almost certainly free in CI.
+    start = 8770
+    while start < 8800 and not _try_bind(start):
+        start += 1
+    if start >= 8800:
+        pytest.skip("no free port in 8770-8799 to run picker test")
     try:
-        port = srv.pick_free_port(start=7777, end=7799)
-        assert port == 7778
+        port = srv.pick_free_port(start=start, end=start + 5)
+        assert port == start + 1
     finally:
         for s in occupied:
             s.close()

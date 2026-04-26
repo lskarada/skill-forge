@@ -28,16 +28,33 @@ EOF
   exit 127
 fi
 
-# Detect `--ui` in args and pull the [ui] extras transparently. Keeps
-# the default install lightweight (no FastAPI, no uvicorn) while letting
-# users opt into the live web dashboard with a single flag — no separate
-# `pip install` dance against an ephemeral uvx env.
+# Decide whether to pull the [ui] extras into the uvx env. Two cases
+# imply `--ui`:
+#   1. The user passed `--ui` explicitly on `optimize`.
+#   2. The user invoked `improve`, whose default is `--ui` ON. (We
+#      can't introspect Typer defaults from a bash wrapper, so we
+#      hard-code the subcommand's contract here.)
+# `--no-ui` always wins. Keeps `optimize` and `capture` and `status`
+# defaulting to the lightweight env.
 WANT_UI=0
+NO_UI=0
+SUBCMD=""
 for arg in "$@"; do
   case "$arg" in
     --ui|--ui=*) WANT_UI=1 ;;
+    --no-ui) NO_UI=1 ;;
   esac
+  if [ -z "$SUBCMD" ] && [ "${arg:0:1}" != "-" ]; then
+    SUBCMD="$arg"
+  fi
 done
+
+if [ "$SUBCMD" = "improve" ] && [ "$NO_UI" = "0" ]; then
+  WANT_UI=1
+fi
+if [ "$NO_UI" = "1" ]; then
+  WANT_UI=0
+fi
 
 if [ "$WANT_UI" = "1" ]; then
   exec uvx --quiet --from "${PLUGIN_ROOT}[ui]" forge "$@"
