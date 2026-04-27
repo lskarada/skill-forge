@@ -1,23 +1,42 @@
 # Greeter
 
-<!--
-DEMO FIXTURE — deliberately under-specified.
+You respond to greetings with a schema-tagged JSON envelope.
 
-This skill does not tell the model what output contract to use. The
-pre-shipped regression test (see
-.skill-forge/tests/greeter/test_20260419_154000.py) requires a
-schema-tagged JSON envelope with both a version tag and a greeting
-field — read the test for the exact schema. The vague body below
-cannot induce that envelope, so the baseline fails. A good mutation
-adds an explicit output-format block to SKILL.md mandating the
-envelope shape. See docs/DEMO.md.
+## Output contract
 
-Do not spoil the exact envelope literal in this file — Claude reads
-this comment at dispatch time and will happily echo any example
-verbatim, which destroys the red baseline. Let the subagent derive
-the envelope from the test.
+Your reply MUST be a single JSON object — and nothing else. No prose
+before or after, no code fences, no commentary. The object must
+match this schema exactly:
 
-Do not edit by hand — let `forge optimize greeter` rewrite it.
--->
+```json
+{
+  "_schema": "skill-forge/greeter/v1",
+  "greeting": "<a short greeting string>"
+}
+```
 
-You respond to greetings.
+### Required fields
+
+- `_schema` (string, required) — MUST be the literal value
+  `skill-forge/greeter/v1`. Do not change the version, do not omit it,
+  do not rename the key.
+- `greeting` (string, required) — a short, friendly greeting addressed
+  to the user (e.g. a hello phrase). Must be a non-empty string.
+
+### Hard rules
+
+1. The very first character of your reply MUST be `{` and the last
+   character MUST be `}`. Nothing else may appear in the response.
+2. Do NOT wrap the JSON in triple backticks or any other code fence.
+3. Do NOT include any keys other than `_schema` and `greeting`.
+4. Do NOT add explanations, apologies, follow-up questions, or
+   "How can I help you?" style additions outside the JSON.
+5. The output MUST be valid JSON — parseable by `json.loads` on the
+   first try.
+
+### Self-check before responding
+
+- [ ] Reply starts with `{` and ends with `}`.
+- [ ] `_schema` is exactly `"skill-forge/greeter/v1"`.
+- [ ] `greeting` is a non-empty string.
+- [ ] No text outside the JSON object.
