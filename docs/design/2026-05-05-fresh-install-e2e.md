@@ -80,7 +80,7 @@ No mocks. **Each test gets a fresh clone** (per-test isolation of filesystem sta
 
 ## Test list
 
-Total wall-clock: ~3.5 min cold (one ~30s uvx resolve + ~3 min of `forge` invocations), ~3 min warm.
+Total wall-clock: ~10-12 min cold, ~10 min warm. The dominant cost is `forge optimize greeter --workers 1`, which empirically runs ~125s per call (Phase 1 baseline dispatches real Claude Code subagents inside the harness DSL). Early-exit on the first green run keeps test 5's worst case to ~2 min on a broken-determinism failure (instead of 10 min).
 
 | # | Test | SkillForge contract pinned | Source citation | Cost |
 |---|---|---|---|---|
@@ -88,8 +88,8 @@ Total wall-clock: ~3.5 min cold (one ~30s uvx resolve + ~3 min of `forge` invoca
 | 2 | `test_pytest_in_runtime_deps_not_dev` | `[project].dependencies` (in `pyproject.toml`) includes `pytest`; no separate `[dependency-groups].dev` entry shadows it. | CLAUDE.md "pytest belongs in `[project].dependencies`, not a dev group" | static, ~0.1s |
 | 3 | `test_uvx_cold_install_help_works` | `bin/forge --help` exits 0 from a fresh clone with cold `UV_CACHE_DIR`; stdout contains `Usage:` and `forge`. | bug 963 + general resolvability | uvx cold, ~30s once per session |
 | 4 | `test_forge_status_clean_repo_no_crash` | `bin/forge status` against a clone with no `.skill-forge/` state exits 0 and does not crash on missing sidecar. | onboarding edge case | reuses cache, ~3s |
-| 5 | `test_greeter_baseline_red_by_construction_5x` | `echo n \| bin/forge optimize greeter --workers 1` produces a Phase 1 pytest result with `failed > 0`. **Run 5 consecutive times in one test; ALL must be red.** Any single green run fails the test (assertion: `all(r.failed > 0 for r in results)`). The failure message includes per-run failed/passed counts and a stdout excerpt. | SOUL.md non-negotiable #1 + ship Gate 2 | ~25s × 5 = ~2 min |
-| 6 | `test_capture_emits_test_dir_under_skill_forge` | After its **own** `bin/forge optimize greeter --workers 1` (with `echo n`) — independent run, no implicit ordering with test 5 — `<clone>/.skill-forge/tests/greeter/` exists with at least one `test_*.py` file. | CLAUDE.md "regression tests for tracked skills … separate tree" | reuses cache, ~25s |
+| 5 | `test_greeter_baseline_red_by_construction_5x` | `echo n \| bin/forge optimize greeter --workers 1` produces a Phase 1 pytest result with `failed > 0`. **Run 5 consecutive times in one test; ALL must be red.** Any single green run fails the test fast (early-exit on first green). The failure message includes per-run failed/passed counts and a stdout excerpt. | SOUL.md non-negotiable #1 + ship Gate 2 | ~125s × 5 = ~10 min on green-by-construction (success); ~2 min on first-green failure (early-exit) |
+| 6 | `test_capture_emits_test_dir_under_skill_forge` | After its **own** `bin/forge optimize greeter --workers 1` (with `echo n`) — independent run, no implicit ordering with test 5 — `<clone>/.skill-forge/tests/greeter/` exists with at least one `test_*.py` file. | CLAUDE.md "regression tests for tracked skills … separate tree" | ~36s (one optimize call + filesystem assertion) |
 | 7 | `test_mutation_target_staging_contract_intact` | `src/skill_forge/optimize.py` source contains the literal string `"MUTATION_TARGET.md"`. (Path verified at spec time: `optimize.py:685`.) | CLAUDE.md "Skill-Forge works around [the .claude/ write block] by staging the SUT at `MUTATION_TARGET.md`" | static, ~0.1s |
 | 8 | `test_terse_dispatch_constraint_intact` | `src/skill_forge/dispatch.py` source contains the literal string `"Produce only the final assistant response"`. (Path verified at spec time: `dispatch.py:144`.) | CLAUDE.md "load-bearing for test determinism — do not soften it" | static, ~0.1s |
 | 9 | `test_no_anthropic_sdk_imports_in_src` | No file under `src/` contains `import anthropic` or `from anthropic` (regex on each `.py` file). | CLAUDE.md + SOUL.md non-negotiable #4 | static, ~0.1s |
@@ -155,4 +155,5 @@ From `shanraisshan/claude-code-best-practice` and project memory:
 - **Test 6 runs its own `forge optimize`** rather than coupling to test 5's iteration order. Adds ~25s; buys order-independence.
 - **Tests 4 (live `import pytest` in uvx env)** dropped — redundant with test 2 (static manifest parse) + test 5 (live behavior would crash without pytest).
 - **No L3 (full mutation loop) in this tier.** Stays as manual `CLAUDE.md` Gate 3 before tagging — wall-clock and non-determinism make it wrong for automated fast-feedback.
-- **Subprocess timeouts:** `bin/forge --help` ⇒ 60s (covers cold uvx); `forge status` ⇒ 30s; `forge optimize greeter --workers 1` ⇒ 60s. Hard kill, no retries; assertion message includes captured stdout/stderr on timeout.
+- **Subprocess timeouts:** `bin/forge --help` ⇒ 120s (covers cold uvx wheel build); `forge status` ⇒ 60s; `forge optimize greeter --workers 1` ⇒ 300s (empirically ~125s per call; 300s gives headroom without masking a genuine hang). Hard kill, no retries; assertion message includes captured stdout/stderr on timeout.
+- **Test 5 early-exit:** loops 5 times but breaks on first green baseline. The contract is `all 5 red`; a single green disproves that immediately. Early-exit saves ~8 minutes on a broken-determinism failure without weakening the rule.
