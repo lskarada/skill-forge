@@ -32,8 +32,19 @@ def test_manifest_versions_agree() -> None:
     plugin_version = plugin["version"]
     marketplace_metadata = marketplace["metadata"]["version"]
     plugins_list = marketplace["plugins"]
+    # Schema guard: marketplace.json's `plugins` is a list of objects.
+    # If the schema ever evolves to a name-keyed dict, the next-comprehension
+    # would raise TypeError on `p["name"]` (iterating dict yields strings).
+    # Catch that explicitly so the failure names the schema drift, not a
+    # raw TypeError.
+    assert isinstance(plugins_list, list), (
+        f"marketplace.json `.plugins` is not a list (got "
+        f"{type(plugins_list).__name__}). Schema may have evolved — "
+        f"update test_manifest_versions_agree to match."
+    )
     skill_forge_entry = next(
-        (p for p in plugins_list if p["name"] == "skill-forge"), None
+        (p for p in plugins_list if isinstance(p, dict) and p.get("name") == "skill-forge"),
+        None,
     )
     assert skill_forge_entry is not None, (
         "marketplace.json plugins[] missing skill-forge entry"

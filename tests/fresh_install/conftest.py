@@ -37,11 +37,29 @@ class FreshClone:
 def uv_cache(tmp_path_factory: pytest.TempPathFactory) -> Path:
     """Session-scoped uvx cache. First live test pays cold-resolve cost
     (~30s); subsequent tests reuse the cache. Doesn't touch the user's
-    global cache."""
+    global cache.
+
+    Checks BOTH `uvx` and `uv` because they can be packaged
+    independently. Some Linux distro packages of uv (apt, dnf, pacman)
+    install only the `uv` binary; `uvx` must then be invoked as
+    `uv tool run`. `bin/forge` directly invokes `uvx`, so without
+    this check the fixture would pass but every test that calls
+    `bin/forge` would fail with rc=127 and a misleading error.
+    """
+    if shutil.which("uvx") is None:
+        pytest.fail(
+            "fresh_install tier requires `uvx` on PATH (used by bin/forge). "
+            "Install with one of:\n"
+            "    brew install uv\n"
+            "    curl -LsSf https://astral.sh/uv/install.sh | sh\n"
+            "If you have `uv` but not `uvx` (some Linux distro packages "
+            "split them), install via the curl command or `pip install uv`."
+        )
     if shutil.which("uv") is None:
         pytest.fail(
-            "fresh_install tier requires `uv` on PATH. Install with "
-            "`brew install uv` or `curl -LsSf https://astral.sh/uv/install.sh | sh`."
+            "fresh_install tier requires `uv` on PATH (used by `uv sync` "
+            "in the dev env). Install with `brew install uv` or "
+            "`curl -LsSf https://astral.sh/uv/install.sh | sh`."
         )
     if shutil.which("git") is None:
         pytest.fail("fresh_install tier requires `git` on PATH.")
@@ -78,7 +96,16 @@ def fresh_clone(tmp_path: Path, uv_cache: Path) -> Iterator[FreshClone]:
 def pytest_collection_modifyitems(config, items) -> None:
     """Auto-tag every test under tests/fresh_install/ with the
     `fresh_install` marker, so the addopts exclusion works without
-    requiring `@pytest.mark.fresh_install` on every test."""
+    requiring `@pytest.mark.fresh_install` on every test.
+
+    Path-separator normalization: pytest's `item.fspath` produces
+    backslash-separated paths on Windows. A bare substring check for
+    `tests/fresh_install/` would silently miss every test there, the
+    marker would never be applied, and the addopts exclusion would
+    not exclude the tier from the default suite. Normalize to forward
+    slashes before the substring check.
+    """
     for item in items:
-        if "tests/fresh_install/" in str(item.fspath):
+        normalized = str(item.fspath).replace("\\", "/")
+        if "tests/fresh_install/" in normalized:
             item.add_marker(pytest.mark.fresh_install)

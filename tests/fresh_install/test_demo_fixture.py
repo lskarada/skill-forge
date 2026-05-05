@@ -48,6 +48,10 @@ def _run_optimize_baseline(
     call). On a fresh clone with cold UV_CACHE_DIR, the inner uvx
     invocation also pays wheel-build cost. Empirically: 60-180s per
     call. 300s gives headroom without masking a genuine hang."""
+    # One "n" is enough: forge optimize asks exactly one y/N prompt
+    # ("proceed with mutation?"). If a future change adds a pre-mutation
+    # prompt, this stdin contract breaks — feed both answers explicitly
+    # ("n\nn\n") at that time rather than trusting EOF behavior.
     proc = subprocess.run(
         [str(fresh.forge), "optimize", "greeter", "--workers", "1"],
         cwd=str(fresh.clone_dir),
@@ -109,10 +113,15 @@ def test_greeter_baseline_red_by_construction_5x(
                 green_idx = idx
         lines.append("")
         if green_idx >= 0:
-            lines.append("Green-run stdout (truncated to 400 chars):")
+            # Tail-slice (not head-slice) because subprocess errors
+            # cluster at the end of combined stdout+stderr — uvx
+            # resolution lines fill the head, the actual failure
+            # message lands at the tail. 400 chars covers a typical
+            # pytest summary block + the line that produced it.
+            lines.append("Green-run stdout (last 400 chars):")
             lines.append(
                 "  "
-                + results[green_idx].raw_stdout[:400].replace("\n", "\n  ")
+                + results[green_idx].raw_stdout[-400:].replace("\n", "\n  ")
             )
         lines.append("")
         lines.append(

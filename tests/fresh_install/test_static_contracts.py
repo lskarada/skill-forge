@@ -30,9 +30,10 @@ def test_mutation_target_staging_contract_intact() -> None:
     split was prompted by code review feedback that the original single
     grep under-specified what the test actually pinned.
 
-    Verified at spec time: lives in src/skill_forge/optimize.py:685
-    inside `_run_parallel`. If the staging mechanism moves, update this
-    test to grep the new location, not delete it.
+    Lives inside `_run_parallel` in src/skill_forge/optimize.py.
+    If the staging mechanism moves, update this test to grep the new
+    location, not delete it. (Function name cited rather than line
+    number — line numbers drift on every nearby edit.)
     """
     optimize_py = (REPO_ROOT / "src" / "skill_forge" / "optimize.py").read_text()
     assert "MUTATION_TARGET.md" in optimize_py, (
@@ -57,8 +58,7 @@ def test_serial_path_uses_worktree_sut_contract_intact() -> None:
     directly — which is what CLAUDE.md forbids — this assertion
     fails.
 
-    Verified at spec time: lives in src/skill_forge/optimize.py:210
-    inside `_run_optimize_inner`.
+    Lives inside `_run_optimize_inner` in src/skill_forge/optimize.py.
     """
     optimize_py = (REPO_ROOT / "src" / "skill_forge" / "optimize.py").read_text()
     needle = "sut_path=worktree_sut"
@@ -76,7 +76,7 @@ def test_terse_dispatch_constraint_intact() -> None:
     'Produce only the final assistant response... No commentary.'
     CLAUDE.md: 'load-bearing for test determinism — do not soften it.'
 
-    Verified at spec time: lives in src/skill_forge/dispatch.py.
+    Lives in src/skill_forge/dispatch.py inside `run_skill()`.
     """
     dispatch_py = (REPO_ROOT / "src" / "skill_forge" / "dispatch.py").read_text()
     needle = "Produce only the final assistant response"
