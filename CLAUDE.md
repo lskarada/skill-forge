@@ -102,7 +102,7 @@ only end-to-end proof a fresh user sees. Rules:
 2. Gate 1: `uv run pytest tests/ -q` — all green.
 3. Gate 2 (if demo touched): `bin/verify-fresh-install` (~10–12 min) —
    automates the 5 consecutive red baselines on a fresh `git clone`
-   plus 8 other overfitted contract tests (manifest version agreement,
+   plus 9 other overfitted contract tests (manifest version agreement,
    load-bearing strings in `optimize.py`/`dispatch.py`, no-anthropic-
    import, cold uvx resolves). Hand-run the bare command only if the
    script can't be used.

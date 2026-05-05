@@ -76,11 +76,16 @@ def test_pytest_in_runtime_deps_not_dev() -> None:
 
     # Belt-and-suspenders: if a dependency-groups.dev exists, it must
     # not contain pytest as a separate entry (which could shadow runtime).
+    # PEP 735 allows dict-style entries (e.g., {"include-group": "test"}),
+    # so filter to plain strings before splitting — otherwise a future
+    # include-group entry would crash with AttributeError instead of
+    # producing a clean assertion failure.
     dep_groups = pyproject.get("dependency-groups", {})
     dev_group = dep_groups.get("dev", [])
     dev_pkgs = {
         dep.split(">=")[0].split("==")[0].split("<")[0].strip()
         for dep in dev_group
+        if isinstance(dep, str)
     }
     assert "pytest" not in dev_pkgs, (
         "pytest appears in [dependency-groups].dev — remove it; "

@@ -43,7 +43,7 @@ One new test tier and one shell entrypoint, mirroring the existing `tests/verify
 - `tests/fresh_install/test_manifest_contracts.py` — tests #1, #2 (static parses; no subprocess).
 - `tests/fresh_install/test_uvx_install.py` — tests #3, #4 (live uvx subprocess).
 - `tests/fresh_install/test_demo_fixture.py` — tests #5, #6 (drives `bin/forge` against greeter).
-- `tests/fresh_install/test_static_contracts.py` — tests #7, #8, #9 (grep-based; no subprocess).
+- `tests/fresh_install/test_static_contracts.py` — tests #7, #8, #9, #10 (grep-based; no subprocess).
 
 ### Files modified
 
@@ -90,9 +90,10 @@ Total wall-clock: ~10-12 min cold, ~10 min warm. The dominant cost is `forge opt
 | 4 | `test_forge_status_clean_repo_no_crash` | `bin/forge status` against a clone with no `.skill-forge/` state exits 0 and does not crash on missing sidecar. | onboarding edge case | reuses cache, ~3s |
 | 5 | `test_greeter_baseline_red_by_construction_5x` | `echo n \| bin/forge optimize greeter --workers 1` produces a Phase 1 pytest result with `failed > 0`. **Run 5 consecutive times in one test; ALL must be red.** Any single green run fails the test fast (early-exit on first green). The failure message includes per-run failed/passed counts and a stdout excerpt. | SOUL.md non-negotiable #1 + ship Gate 2 | ~125s × 5 = ~10 min on green-by-construction (success); ~2 min on first-green failure (early-exit) |
 | 6 | `test_capture_emits_test_dir_under_skill_forge` | After its **own** `bin/forge optimize greeter --workers 1` (with `echo n`) — independent run, no implicit ordering with test 5 — `<clone>/.skill-forge/tests/greeter/` exists with at least one `test_*.py` file. | CLAUDE.md "regression tests for tracked skills … separate tree" | ~36s (one optimize call + filesystem assertion) |
-| 7 | `test_mutation_target_staging_contract_intact` | `src/skill_forge/optimize.py` source contains the literal string `"MUTATION_TARGET.md"`. (Path verified at spec time: `optimize.py:685`.) | CLAUDE.md "Skill-Forge works around [the .claude/ write block] by staging the SUT at `MUTATION_TARGET.md`" | static, ~0.1s |
-| 8 | `test_terse_dispatch_constraint_intact` | `src/skill_forge/dispatch.py` source contains the literal string `"Produce only the final assistant response"`. (Path verified at spec time: `dispatch.py:144`.) | CLAUDE.md "load-bearing for test determinism — do not soften it" | static, ~0.1s |
-| 9 | `test_no_anthropic_sdk_imports_in_src` | No file under `src/` contains `import anthropic` or `from anthropic` (regex on each `.py` file). | CLAUDE.md + SOUL.md non-negotiable #4 | static, ~0.1s |
+| 7 | `test_mutation_target_staging_contract_intact` | `src/skill_forge/optimize.py` source contains the literal string `"MUTATION_TARGET.md"` — pins the **parallel-path** SUT staging contract specifically (`workers > 1` flow at `optimize.py:685`). | CLAUDE.md "Skill-Forge works around [the .claude/ write block] by staging the SUT at `MUTATION_TARGET.md`" | static, ~0.1s |
+| 8 | `test_serial_path_uses_worktree_sut_contract_intact` | `src/skill_forge/optimize.py` source contains `"sut_path=worktree_sut"` — pins the **serial-path** workaround for the same .claude/-write block. The serial path mutates inside a worktree (not the main repo's .claude/), which is the corresponding workaround for `workers = 1`. Added after code review flagged that test 7 alone under-specified what was being pinned. | CLAUDE.md "Claude Code blocks subagent writes anywhere under `.claude/`" | static, ~0.1s |
+| 9 | `test_terse_dispatch_constraint_intact` | `src/skill_forge/dispatch.py` source contains the literal string `"Produce only the final assistant response"`. (Path verified at spec time: `dispatch.py:144`.) | CLAUDE.md "load-bearing for test determinism — do not soften it" | static, ~0.1s |
+| 10 | `test_no_anthropic_sdk_imports_in_src` | No file under `src/` contains `import anthropic` or `from anthropic` (regex on each `.py` file). | CLAUDE.md + SOUL.md non-negotiable #4 | static, ~0.1s |
 
 ### "5x" rationale
 
@@ -129,7 +130,7 @@ or did pytest never run (env issue)?
 
 Two failure modes, two fixes — the message points the operator at the right one.
 
-### Static-contract tests (7, 8, 9)
+### Static-contract tests (7, 8, 9, 10)
 
 If they fail, the test was right and the contract changed. The fix is:
 1. Update the test string to match the new contract location.

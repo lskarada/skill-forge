@@ -16,22 +16,58 @@ REPO_ROOT = Path(__file__).resolve().parents[2]
 
 
 def test_mutation_target_staging_contract_intact() -> None:
-    """`MUTATION_TARGET.md` is the staging path the harness uses to
-    work around Claude Code's block on subagent writes under .claude/.
+    """The PARALLEL path (`workers > 1`) stages the SUT at
+    `MUTATION_TARGET.md` at the worktree root, copies the SUT in,
+    invokes the mutator against the staged copy, then copies back.
     CLAUDE.md: 'Skill-Forge works around this by staging the SUT at
     MUTATION_TARGET.md at the worktree root ... Don't simplify this
     into a direct edit.'
 
-    Verified at spec time: the literal lives in src/skill_forge/optimize.py.
-    If the staging mechanism moves, update this test to grep the new
-    location, not delete it.
+    Scope: this test pins the parallel-path staging only. The serial
+    path (`workers = 1`) routes through `worktree_sut` directly inside
+    a worktree (verified separately by
+    test_serial_path_uses_worktree_sut_contract_intact). The two-test
+    split was prompted by code review feedback that the original single
+    grep under-specified what the test actually pinned.
+
+    Verified at spec time: lives in src/skill_forge/optimize.py:685
+    inside `_run_parallel`. If the staging mechanism moves, update this
+    test to grep the new location, not delete it.
     """
     optimize_py = (REPO_ROOT / "src" / "skill_forge" / "optimize.py").read_text()
     assert "MUTATION_TARGET.md" in optimize_py, (
-        "MUTATION_TARGET.md staging path missing from optimize.py. "
-        "CLAUDE.md forbids simplifying this into a direct edit — the "
-        "harness needs an out-of-tree staging path because Claude Code "
-        "blocks subagent writes anywhere under .claude/."
+        "MUTATION_TARGET.md staging path missing from optimize.py "
+        "(parallel-path SUT staging). CLAUDE.md forbids simplifying "
+        "this into a direct edit — the parallel-path mutator needs an "
+        "out-of-tree staging path because Claude Code blocks subagent "
+        "writes anywhere under .claude/."
+    )
+
+
+def test_serial_path_uses_worktree_sut_contract_intact() -> None:
+    """The SERIAL path (`workers = 1`) hands the mutator a path inside
+    a worktree (`worktree_sut`), not the main-repo .claude/ path. The
+    worktree IS the .claude/-write workaround for the serial flow:
+    mutating `<worktree>/.claude/...` is fine because Claude Code's
+    block applies to the source-of-truth tree, not detached worktrees.
+
+    This test pins the contract that the serial path passes
+    `worktree_sut` (not `sut_path`) to the mutator. If someone
+    "simplifies" the serial path to write the main-repo .claude/
+    directly — which is what CLAUDE.md forbids — this assertion
+    fails.
+
+    Verified at spec time: lives in src/skill_forge/optimize.py:210
+    inside `_run_optimize_inner`.
+    """
+    optimize_py = (REPO_ROOT / "src" / "skill_forge" / "optimize.py").read_text()
+    needle = "sut_path=worktree_sut"
+    assert needle in optimize_py, (
+        f"Serial-path worktree-staging contract missing from "
+        f"optimize.py. Looked for: {needle!r}. CLAUDE.md: 'Claude Code "
+        f"blocks subagent writes anywhere under .claude/.' The serial "
+        f"path's workaround is to mutate inside a worktree, not the "
+        f"main repo's .claude/ tree."
     )
 
 

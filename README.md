@@ -140,7 +140,7 @@ Three pytest tiers, gated by markers and excluded from the default run:
 
 - `uv run pytest tests/ -q` — unit suite (~4s, must stay green).
 - `bin/verify-dashboard` — real-Chromium dashboard E2E (~30s).
-- `bin/verify-fresh-install` — fresh-clone marketplace-install simulation (~10–12 min). Automates the 5-consecutive-red-baselines ship gate plus 8 other contract tests.
+- `bin/verify-fresh-install` — fresh-clone marketplace-install simulation (~10–12 min). Automates the 5-consecutive-red-baselines ship gate plus 9 other contract tests.
 
 ---
 

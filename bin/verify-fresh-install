@@ -10,6 +10,9 @@
 #   - src/skill_forge/optimize.py / dispatch.py / capture.py
 #   - .claude/skills/greeter/ / .skill-forge/tests/greeter/
 #
+# 10 tests across 4 files: 2 manifest, 4 static-grep, 2 uvx-install,
+# 2 demo-fixture (5x red baseline + capture-emits).
+#
 # Wall-clock: ~10-12 min cold, ~10 min warm. Dominated by the 5x
 # greeter baseline (Phase 1 dispatches real Claude Code subagents
 # per harness `run_skill` call ⇒ ~125s per iteration). Test 5 early-
