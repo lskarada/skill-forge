@@ -45,9 +45,14 @@ if ! command -v git >/dev/null 2>&1; then
   exit 127
 fi
 
-# Make sure the dev env has pytest + project deps (no extras needed
-# for this tier — it uses stdlib + pytest + real subprocesses).
-uv sync > /dev/null
+# Make sure the dev env has pytest + project deps. `--inexact` is
+# load-bearing: a bare `uv sync` removes extras the user has already
+# installed (e.g. [ui] for dashboard tests, [verify] for browser
+# tests), which silently breaks unrelated suites with skip-on-import
+# guards. This tier itself uses stdlib + pytest + real subprocesses,
+# so no --extra flags are needed; --inexact preserves whatever the
+# user has.
+uv sync --inexact > /dev/null
 
 # Run the suite. -m fresh_install overrides the default exclusion. -x
 # stops on first failure to keep the loop tight.
