@@ -18,7 +18,8 @@ These gates are run by hand. Between releases there is **nothing automated** tha
 - `pytest` accidentally moved to a dev-only dependency group (CLAUDE.md non-obvious rule; would silently break Phase 1 baseline inside the uvx env).
 - `bin/forge` wrapper not auto-enabling `[ui]` extras for the `improve` subcommand (bug 963).
 - Demo fixture's red baseline drifting from "red by construction" to "red by sampling" (SOUL.md non-negotiable #1).
-- Load-bearing string contracts in `dispatch.py` (terse-output constraint; `MUTATION_TARGET.md` staging path) being "simplified" away.
+- Load-bearing string contract in `dispatch.py` (terse-output constraint) being "soften[ed]" away.
+- Load-bearing string contract in `optimize.py` (`MUTATION_TARGET.md` staging path) being "simplified" away.
 - An `import anthropic` accidentally landing in `src/` (SOUL.md non-negotiable #4).
 
 ## Non-goals
@@ -36,14 +37,13 @@ One new test tier and one shell entrypoint, mirroring the existing `tests/verify
 
 - `bin/verify-fresh-install` — shell entry point. Ensures `uv` is present, runs `pytest tests/fresh_install/ -m fresh_install -v -x`. First run does `uv sync` to make `pytest` and clone helpers available; later runs are warm.
 - `tests/fresh_install/__init__.py` — empty.
-- `tests/fresh_install/conftest.py` — fixture `fresh_clone` that:
-  1. Creates `tmp_path/checkout/`, runs `git clone --local <repo_root> <tmp_path/checkout>` (hardlinks; ~0.3s).
-  2. Sets `UV_CACHE_DIR=<tmp_path>/uv-cache` for all subprocesses spawned in the test (cold-resolve scope; doesn't touch the user's global cache).
-  3. Yields a dataclass: `clone_dir: Path`, `forge: Path` (= `clone_dir / "bin" / "forge"`), `env: dict[str, str]`.
+- `tests/fresh_install/conftest.py` — two fixtures:
+  - `uv_cache` (session-scoped): one `tmp_path_factory.mktemp("uv-cache")` directory used by every live test in the session. The first live test pays ~30s for cold uvx resolution; later tests reuse the cache. Doesn't touch the user's global cache.
+  - `fresh_clone` (function-scoped): per test, creates `tmp_path/checkout/`, runs `git clone --local <repo_root> <tmp_path/checkout>` (hardlinks; ~0.3s). `git clone --local` reflects committed state only — to verify uncommitted changes against this tier, commit first. Yields a dataclass `FreshClone(clone_dir, forge, env)` where `env` includes `UV_CACHE_DIR` pointing at the session cache.
 - `tests/fresh_install/test_manifest_contracts.py` — tests #1, #2 (static parses; no subprocess).
-- `tests/fresh_install/test_uvx_install.py` — tests #3, #4, #5 (live uvx subprocess).
-- `tests/fresh_install/test_demo_fixture.py` — tests #6, #7 (drives `bin/forge` against greeter).
-- `tests/fresh_install/test_static_contracts.py` — tests #8, #9, #10 (grep-based; no subprocess).
+- `tests/fresh_install/test_uvx_install.py` — tests #3, #4 (live uvx subprocess).
+- `tests/fresh_install/test_demo_fixture.py` — tests #5, #6 (drives `bin/forge` against greeter).
+- `tests/fresh_install/test_static_contracts.py` — tests #7, #8, #9 (grep-based; no subprocess).
 
 ### Files modified
 
@@ -56,10 +56,14 @@ One new test tier and one shell entrypoint, mirroring the existing `tests/verify
 ### Lifecycle of a single test
 
 ```
+session starts
+  └─ uv_cache fixture (session-scoped)
+      └─ tmp_path_factory.mktemp("uv-cache")     (one cache, reused)
+
 test starts
-  └─ fresh_clone fixture
-      ├─ git clone --local . <tmp>/checkout      (~0.3s)
-      ├─ export UV_CACHE_DIR=<tmp>/uv-cache
+  └─ fresh_clone fixture (function-scoped)
+      ├─ git clone --local <repo_root> <tmp>/checkout   (~0.3s)
+      ├─ env = os.environ | {"UV_CACHE_DIR": <session uv_cache>}
       └─ yield FreshClone(clone_dir, forge, env)
 test body
   └─ subprocess.run([forge, ...], env=env, cwd=clone_dir,
@@ -67,26 +71,28 @@ test body
       └─ asserts on returncode, stdout, files-on-disk, git log
 test ends
   └─ tmp_path cleaned by pytest
+
+session ends
+  └─ uv_cache tmp dir cleaned
 ```
 
-No mocks. No shared state across tests. Each test gets a fresh clone and a fresh uvx cache scope.
+No mocks. **Each test gets a fresh clone** (per-test isolation of filesystem state). **All live tests share one uvx cache** (per-session, for speed). The cache is read-mostly from a test's perspective — clones never share state, only resolved wheels.
 
 ## Test list
 
-Total wall-clock: ~3 min cold, ~30s warm (uvx caches per `UV_CACHE_DIR`; we share one cache across tests in the same session via `tmp_path_factory`).
+Total wall-clock: ~3.5 min cold (one ~30s uvx resolve + ~3 min of `forge` invocations), ~3 min warm.
 
 | # | Test | SkillForge contract pinned | Source citation | Cost |
 |---|---|---|---|---|
 | 1 | `test_manifest_versions_agree` | `pyproject.toml.version` ≡ `plugin.json.version` ≡ `marketplace.json.metadata.version` ≡ `marketplace.json.plugins[skill-forge].version`. | CLAUDE.md "three places the version string lives" + SOUL.md "version bumped in all three manifests" | static, ~0.1s |
-| 2 | `test_pytest_in_runtime_deps_not_dev` | `[project].dependencies` includes `pytest`; no separate dev group adds it. | CLAUDE.md "pytest belongs in `[project].dependencies`, not a dev group" | static, ~0.1s |
-| 3 | `test_uvx_cold_install_help_works` | `bin/forge --help` exits 0 from a fresh clone with cold `UV_CACHE_DIR`; stdout contains `Usage:` and `forge`. | bug 963 + general resolvability | uvx cold, ~30s once |
-| 4 | `test_uvx_env_imports_pytest` | `uvx --from <clone> python -c "import pytest"` succeeds (Phase 1 needs pytest inside the uvx env). | CLAUDE.md "Phase 1 runs pytest inside a uvx-installed marketplace copy" | reuses cache, ~1s |
-| 5 | `test_forge_status_clean_repo_no_crash` | `bin/forge status` against a clone with no `.skill-forge/` state exits 0; does not crash on missing sidecar. | onboarding edge case | reuses cache, ~3s |
-| 6 | `test_greeter_baseline_red_by_construction_5x` | `echo n \| bin/forge optimize greeter --workers 1` produces a Phase 1 pytest result with `failed > 0`. **Run 5 consecutive times in one test; ALL must be red.** Any single green run fails the test (assertion: `all(r.failed > 0 for r in results)`). The failure message includes per-run failed/passed counts and a stdout excerpt. | SOUL.md non-negotiable #1 + ship Gate 2 | ~25s × 5 = ~2 min |
-| 7 | `test_capture_emits_test_dir_under_skill_forge` | After `bin/forge optimize greeter --workers 1` (with `echo n`), `<clone>/.skill-forge/tests/greeter/` exists with at least one `test_*.py` file. | CLAUDE.md "regression tests for tracked skills … separate tree" | piggybacks on test 6's last run, ~0s |
-| 8 | `test_mutation_target_staging_contract_intact` | `dispatch.py` source contains the literal string `"MUTATION_TARGET.md"`. | CLAUDE.md "Skill-Forge works around [the .claude/ write block] by staging the SUT at `MUTATION_TARGET.md`" | static, ~0.1s |
-| 9 | `test_terse_dispatch_constraint_intact` | `dispatch.py` source contains the literal string `"Produce only the final assistant response"`. | CLAUDE.md "load-bearing for test determinism — do not soften it" | static, ~0.1s |
-| 10 | `test_no_anthropic_sdk_imports_in_src` | No file under `src/` contains `import anthropic` or `from anthropic`. | CLAUDE.md + SOUL.md non-negotiable #4 | static, ~0.1s |
+| 2 | `test_pytest_in_runtime_deps_not_dev` | `[project].dependencies` (in `pyproject.toml`) includes `pytest`; no separate `[dependency-groups].dev` entry shadows it. | CLAUDE.md "pytest belongs in `[project].dependencies`, not a dev group" | static, ~0.1s |
+| 3 | `test_uvx_cold_install_help_works` | `bin/forge --help` exits 0 from a fresh clone with cold `UV_CACHE_DIR`; stdout contains `Usage:` and `forge`. | bug 963 + general resolvability | uvx cold, ~30s once per session |
+| 4 | `test_forge_status_clean_repo_no_crash` | `bin/forge status` against a clone with no `.skill-forge/` state exits 0 and does not crash on missing sidecar. | onboarding edge case | reuses cache, ~3s |
+| 5 | `test_greeter_baseline_red_by_construction_5x` | `echo n \| bin/forge optimize greeter --workers 1` produces a Phase 1 pytest result with `failed > 0`. **Run 5 consecutive times in one test; ALL must be red.** Any single green run fails the test (assertion: `all(r.failed > 0 for r in results)`). The failure message includes per-run failed/passed counts and a stdout excerpt. | SOUL.md non-negotiable #1 + ship Gate 2 | ~25s × 5 = ~2 min |
+| 6 | `test_capture_emits_test_dir_under_skill_forge` | After its **own** `bin/forge optimize greeter --workers 1` (with `echo n`) — independent run, no implicit ordering with test 5 — `<clone>/.skill-forge/tests/greeter/` exists with at least one `test_*.py` file. | CLAUDE.md "regression tests for tracked skills … separate tree" | reuses cache, ~25s |
+| 7 | `test_mutation_target_staging_contract_intact` | `src/skill_forge/optimize.py` source contains the literal string `"MUTATION_TARGET.md"`. (Path verified at spec time: `optimize.py:685`.) | CLAUDE.md "Skill-Forge works around [the .claude/ write block] by staging the SUT at `MUTATION_TARGET.md`" | static, ~0.1s |
+| 8 | `test_terse_dispatch_constraint_intact` | `src/skill_forge/dispatch.py` source contains the literal string `"Produce only the final assistant response"`. (Path verified at spec time: `dispatch.py:144`.) | CLAUDE.md "load-bearing for test determinism — do not soften it" | static, ~0.1s |
+| 9 | `test_no_anthropic_sdk_imports_in_src` | No file under `src/` contains `import anthropic` or `from anthropic` (regex on each `.py` file). | CLAUDE.md + SOUL.md non-negotiable #4 | static, ~0.1s |
 
 ### "5x" rationale
 
@@ -102,20 +108,20 @@ When a test fails, the diagnostic must point at root cause. Bypasses forbidden:
 - **No mocking of `git`, `uv`, or `pytest`.** Mocks make the tier a lie — its purpose is to catch real install/run breakage.
 - **No retries on flake.** A "flaky" test in this tier means an actual contract is non-deterministic — investigate at root cause, don't paper over.
 
-### Test 6 specifically
+### Test 5 specifically (5x red baseline)
 
 If any of the 5 runs goes green, the failure message prints:
 
 ```
-Test 6 violated SOUL.md non-negotiable #1 (red by construction):
+Test 5 violated SOUL.md non-negotiable #1 (red by construction):
   run 1/5: failed=2 passed=0
   run 2/5: failed=2 passed=0
   run 3/5: failed=0 passed=2  ← GREEN, broke determinism
   run 4/5: failed=2 passed=0
   run 5/5: failed=2 passed=0
 
-Last green run stdout (truncated):
-  <first 200 chars of pytest output>
+Green-run stdout (truncated):
+  <first 200 chars of pytest output from the green run>
 
 Diagnose: did the SKILL accidentally satisfy the assertion (real bug)
 or did pytest never run (env issue)?
@@ -123,7 +129,7 @@ or did pytest never run (env issue)?
 
 Two failure modes, two fixes — the message points the operator at the right one.
 
-### Static-contract tests (8, 9, 10)
+### Static-contract tests (7, 8, 9)
 
 If they fail, the test was right and the contract changed. The fix is:
 1. Update the test string to match the new contract location.
@@ -138,10 +144,15 @@ From `shanraisshan/claude-code-best-practice` and project memory:
 
 1. **"Product verification skills"** (their `signup-flow-driver`, `checkout-verifier`) — `tests/fresh_install/` IS the SkillForge-shaped product verifier, overfitted to the install + capture + baseline flow.
 2. **Phase-gated tests** (their pattern; user's `feedback_phased_gated_plans` memory) — this adds the missing distribution-layer tier on top of unit + verify, without inflating any one tier.
-3. **uvx-extras gating** (user's `feedback_uvx_optional_features` memory) — tests 3, 4, 5 verify the cold uvx env from a fresh cache, exactly the path that bug 963 broke.
+3. **uvx-extras gating** (user's `feedback_uvx_optional_features` memory) — tests 3, 4, 5, 6 verify the cold uvx env from a fresh cache, exactly the path that bug 963 broke.
 4. **No brittle bypasses** (user's `feedback_overfitted_tests` memory) — encoded in §"Failure-mode handling".
 5. **Marker exclusion via addopts** (user's `feedback_pytest_marker_exclusion` memory) — `-m 'not manual and not verify and not fresh_install'` updates the existing pattern.
 
-## Open questions
+## Resolved decisions
 
-None. Architecture, test list, failure handling are all agreed.
+- **Clone reflects HEAD, not working tree.** `git clone --local` only includes committed code, matching what a marketplace install would actually deliver. To verify uncommitted changes against this tier, commit first.
+- **uvx cache is session-scoped, clone is per-test.** Cache shared for speed (~30s cold paid once); clone fresh per test for filesystem isolation. Tests never share `.skill-forge/` state.
+- **Test 6 runs its own `forge optimize`** rather than coupling to test 5's iteration order. Adds ~25s; buys order-independence.
+- **Tests 4 (live `import pytest` in uvx env)** dropped — redundant with test 2 (static manifest parse) + test 5 (live behavior would crash without pytest).
+- **No L3 (full mutation loop) in this tier.** Stays as manual `CLAUDE.md` Gate 3 before tagging — wall-clock and non-determinism make it wrong for automated fast-feedback.
+- **Subprocess timeouts:** `bin/forge --help` ⇒ 60s (covers cold uvx); `forge status` ⇒ 30s; `forge optimize greeter --workers 1` ⇒ 60s. Hard kill, no retries; assertion message includes captured stdout/stderr on timeout.
