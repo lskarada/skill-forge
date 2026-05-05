@@ -100,7 +100,9 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
     """
     queue: asyncio.Queue = bus.subscribe()
     snap = state.snapshot()
+    yield _format_sse("html", env.get_template("_topbar.html").render(hx_oob=True, **snap))
     yield _format_sse("html", env.get_template("_stats.html").render(**snap))
+    yield _format_sse("html", env.get_template("_counts.html").render(**snap))
     yield _format_sse("html", _render_workers_oob(env, snap))
     yield _format_sse("html", env.get_template("_bracket.html").render(hx_oob=True, **snap))
     try:
@@ -120,7 +122,14 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
                 # browser stays in sync even after a missed event.
                 snap = state.snapshot()
                 yield _format_sse(
+                    "html",
+                    env.get_template("_topbar.html").render(hx_oob=True, **snap),
+                )
+                yield _format_sse(
                     "html", env.get_template("_stats.html").render(**snap)
+                )
+                yield _format_sse(
+                    "html", env.get_template("_counts.html").render(**snap)
                 )
                 yield _format_sse("html", _render_workers_oob(env, snap))
                 yield _format_sse(
@@ -144,14 +153,10 @@ def _format_sse(event: str, data: str) -> str:
 
 
 def _render_workers_oob(env: Environment, snap: dict) -> str:
-    """Render the workers tbody as OOB-swap fragments. Used on reconnect
-    so the table re-syncs without flicker."""
-    parts = []
-    for w in snap["workers"]:
-        parts.append(
-            env.get_template("_worker_row.html").render(w=w, hx_oob=True)
-        )
-    return "".join(parts)
+    """Render the workers tbody as a single OOB-swap target so first-
+    spawn rows self-create rather than failing replaceWith on a missing
+    `#worker-wN`."""
+    return env.get_template("_workers_body.html").render(hx_oob=True, **snap)
 
 
 def _fragments_for_event(env: Environment, evt: object, snap: dict) -> list[str]:
@@ -161,17 +166,17 @@ def _fragments_for_event(env: Environment, evt: object, snap: dict) -> list[str]
     re-applying a snapshot rebuilds the UI safely.
     """
     out: list[str] = []
-    # Stats and counts always update — small, cheap.
+    # Topbar (run id, pill, phase label) always re-renders — cheap.
+    out.append(env.get_template("_topbar.html").render(hx_oob=True, **snap))
+    # Stats and counts always update.
     out.append(env.get_template("_stats.html").render(**snap))
+    out.append(env.get_template("_counts.html").render(**snap))
     kind = getattr(evt, "kind", None)
     if kind in {"WorkerSpawned", "WorkerStatus", "WorkerTested", "WorkerMerged"}:
-        wid = getattr(evt, "worker_id", None)
-        if wid is not None:
-            view = next((w for w in snap["workers"] if w["id"] == wid), None)
-            if view is not None:
-                out.append(
-                    env.get_template("_worker_row.html").render(w=view, hx_oob=True)
-                )
+        # Re-render the whole workers tbody as one OOB swap. Cheap and
+        # idempotent — handles both "first spawn → row self-creates"
+        # and "later transition → row re-renders" without diverging.
+        out.append(_render_workers_oob(env, snap))
         # Bracket re-renders on any worker-level transition so the SVG
         # nodes and edges stay in sync.
         out.append(env.get_template("_bracket.html").render(hx_oob=True, **snap))

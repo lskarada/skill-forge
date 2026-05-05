@@ -3,52 +3,115 @@
    existing slide-over handler picks up `data-worker-id`. #}
 {% set n = workers|length %}
 {% set width = 760 %}
-{% set padding_x = 60 %}
+{% set padding_x = 70 %}
 {% set step = (width - 2 * padding_x) / (n - 1 if n > 1 else 1) %}
 {% set parent_x = width / 2 %}
-{% set parent_y = 50 %}
-{% set child_y = 170 %}
+{% set parent_y = 60 %}
+{% set child_y = 220 %}
 <div id="bracket" class="bracket-card"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
   <div class="bracket-head">
     <h4>Bracket</h4>
-    <div class="bracket-sub">parent → {{ n }} parallel mutation{{ "s" if n != 1 else "" }} · click a node to inspect</div>
+    <div class="bracket-sub">parent → {{ n }} parallel mutation{{ "s" if n != 1 else "" }} · click a node to inspect · drag to pan, wheel to zoom</div>
   </div>
-  <svg class="bracket-svg" viewBox="0 0 {{ width }} 230" preserveAspectRatio="xMidYMid meet">
-    {# Edges first so nodes render on top #}
-    {% for w in workers %}
-      {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
-      {% set edge_class = "bracket-edge-merged" if w.merged else ("bracket-edge-errored" if w.status == "errored" else ("bracket-edge-active" if w.status in ["queued", "mutating", "testing"] else "bracket-edge-discarded")) %}
-      <path class="{{ edge_class }}"
-            d="M{{ parent_x }},{{ parent_y + 20 }}
-               C{{ parent_x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ child_y - 20 }}"
-            fill="none" />
-    {% endfor %}
+  <svg class="bracket-svg" viewBox="0 0 {{ width }} 320" preserveAspectRatio="xMidYMid meet">
+    {# Single viewport <g> so user pan/zoom transforms apply to everything
+       at once and survive SSE OOB-swap re-renders (app.js re-applies the
+       transform after each replaceWith). #}
+    <g id="bracket-viewport">
+      {# Edges first so nodes render on top #}
+      {% for w in workers %}
+        {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
+        {% set edge_class = "bracket-edge-merged" if w.merged else ("bracket-edge-errored" if w.status == "errored" else ("bracket-edge-active" if w.status in ["queued", "mutating", "testing"] else "bracket-edge-discarded")) %}
+        <path class="{{ edge_class }}"
+              d="M{{ parent_x }},{{ parent_y + 22 }}
+                 C{{ parent_x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ (parent_y + child_y) / 2 }} {{ x }},{{ child_y - 22 }}"
+              fill="none" />
+      {% endfor %}
 
-    {# Parent node #}
-    <g class="bracket-parent">
-      <circle cx="{{ parent_x }}" cy="{{ parent_y }}" r="18" />
-      <text x="{{ parent_x }}" y="{{ parent_y + 4 }}" text-anchor="middle"
-            font-family="JetBrains Mono, monospace" font-size="11">{{ parent_label }}</text>
-      {% if stats.baseline %}
-      <text x="{{ parent_x }}" y="{{ parent_y - 28 }}" text-anchor="middle"
-            font-size="10" class="bracket-meta">{{ stats.baseline.passed }}/{{ stats.baseline.failed }}/{{ stats.baseline.errors }}</text>
-      {% endif %}
-    </g>
-
-    {# Child nodes #}
-    {% for w in workers %}
-      {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
-      {% set node_class = "bracket-node-merged" if w.merged else ("bracket-node-errored" if w.status == "errored" else ("bracket-node-active" if w.status in ["queued", "mutating", "testing"] else "bracket-node-discarded")) %}
-      <g class="bracket-child" data-worker-id="{{ w.id }}" style="cursor:pointer">
-        <circle cx="{{ x }}" cy="{{ child_y }}" r="14" class="{{ node_class }}" />
-        <text x="{{ x }}" y="{{ child_y + 4 }}" text-anchor="middle"
-              font-family="JetBrains Mono, monospace" font-size="10"
-              class="bracket-node-label">{{ w.id }}</text>
-        {% if w.tests %}
-        <text x="{{ x }}" y="{{ child_y + 32 }}" text-anchor="middle"
-              font-size="10" class="bracket-meta">{{ w.tests.passed }}/{{ w.tests.failed }}/{{ w.tests.errors }}</text>
+      {# Parent node #}
+      <g class="bracket-parent">
+        <circle cx="{{ parent_x }}" cy="{{ parent_y }}" r="22" />
+        <text x="{{ parent_x }}" y="{{ parent_y + 5 }}" text-anchor="middle"
+              font-family="JetBrains Mono, monospace" font-size="13" font-weight="600">{{ parent_label }}</text>
+        {% if stats.baseline %}
+        <text x="{{ parent_x }}" y="{{ parent_y - 34 }}" text-anchor="middle"
+              font-size="11" class="bracket-meta">{{ stats.baseline.passed }}/{{ stats.baseline.failed }}/{{ stats.baseline.errors }}</text>
         {% endif %}
       </g>
-    {% endfor %}
+
+      {# Child nodes #}
+      {% for w in workers %}
+        {% set x = padding_x + loop.index0 * step if n > 1 else parent_x %}
+        {% set node_class = "bracket-node-merged" if w.merged else ("bracket-node-errored" if w.status == "errored" else ("bracket-node-active" if w.status in ["queued", "mutating", "testing"] else "bracket-node-discarded")) %}
+        {% set wrapper_class = "bracket-child" %}
+        {% if w.merged %}{% set wrapper_class = wrapper_class ~ " bracket-child-merged" %}{% endif %}
+        {% if w.status == "errored" %}{% set wrapper_class = wrapper_class ~ " bracket-child-errored" %}{% endif %}
+        {% if w.status in ["discarded", "done"] and not w.merged %}{% set wrapper_class = wrapper_class ~ " bracket-child-discarded" %}{% endif %}
+        <g class="{{ wrapper_class }}" data-worker-id="{{ w.id }}">
+          {# Progress ring — only while the worker is in an active phase. #}
+          {% if w.status in ["queued", "mutating", "testing"] %}
+          <circle cx="{{ x }}" cy="{{ child_y }}" r="22" class="bracket-progress-track" />
+          <circle cx="{{ x }}" cy="{{ child_y }}" r="22" class="bracket-progress-arc spinning" />
+          {% endif %}
+          <circle cx="{{ x }}" cy="{{ child_y }}" r="16"
+                  class="{{ node_class }}"
+                  data-worker-id="{{ w.id }}" />
+          <text x="{{ x }}" y="{{ child_y + 5 }}" text-anchor="middle"
+                font-family="JetBrains Mono, monospace" font-size="11" font-weight="600"
+                class="bracket-node-label">{{ w.id }}</text>
+          {% if w.tests %}
+          <text x="{{ x }}" y="{{ child_y + 40 }}" text-anchor="middle"
+                font-size="11" class="bracket-meta">{{ w.tests.passed }}/{{ w.tests.failed }}/{{ w.tests.errors }}</text>
+          {% endif %}
+          {% if w.strategy_tag %}
+          <text x="{{ x }}" y="{{ child_y + 60 }}" text-anchor="middle"
+                class="bracket-strategy-tag">{{ w.strategy_tag }}</text>
+          {% endif %}
+        </g>
+      {% endfor %}
+    </g>
   </svg>
+
+  {# Sparkline — score-over-time. Each completed worker plots a dot;
+     running best is a blue staircase. Sits in the bracket card so the
+     same OOB-swap of #bracket re-renders both pieces atomically. #}
+  {% set tested = [] %}
+  {% for w in workers %}
+    {% if w.tests %}
+      {%- set _ = tested.append(w) -%}
+    {% endif %}
+  {% endfor %}
+  {% if tested %}
+    {% set sw = 320 %}
+    {% set sh = 56 %}
+    {% set baseline_y = 6 %}
+    {% set max_pass = stats.best.passed if stats.best else 1 %}
+    {% if max_pass < 1 %}{% set max_pass = 1 %}{% endif %}
+    {% set step_x = (sw - 16) / (tested|length - 1 if tested|length > 1 else 1) %}
+    {% set bar_h = sh - 12 %}
+  <div class="sparkline-card">
+    <span class="sparkline-head">Score over time</span>
+    <svg class="sparkline-svg" viewBox="0 0 {{ sw }} {{ sh }}" preserveAspectRatio="none">
+      <line x1="8" y1="{{ sh - 6 }}" x2="{{ sw - 8 }}" y2="{{ sh - 6 }}" class="sparkline-track" />
+      {# Running-best staircase #}
+      {% set running = namespace(best=0, points=[]) %}
+      {% for w in tested %}
+        {% if w.tests.passed > running.best %}{% set running.best = w.tests.passed %}{% endif %}
+        {% set xx = 8 + loop.index0 * step_x if tested|length > 1 else sw / 2 %}
+        {% set yy = (sh - 6) - (running.best / max_pass) * bar_h %}
+        {%- set _ = running.points.append((xx, yy)) -%}
+      {% endfor %}
+      <polyline class="sparkline-best"
+        points="{% for p in running.points %}{{ p[0] }},{{ p[1] }} {% endfor %}" />
+      {# Per-worker dots #}
+      {% for w in tested %}
+        {% set xx = 8 + loop.index0 * step_x if tested|length > 1 else sw / 2 %}
+        {% set yy = (sh - 6) - (w.tests.passed / max_pass) * bar_h %}
+        {% set dot_class = "sparkline-dot-merged" if w.merged else "sparkline-dot-discarded" %}
+        <circle cx="{{ xx }}" cy="{{ yy }}" r="3.5" class="{{ dot_class }}" />
+      {% endfor %}
+    </svg>
+    <span class="sparkline-head" style="text-align:right;">best <strong style="color:var(--blue);font-family:'JetBrains Mono',monospace;">{{ stats.best.passed if stats.best else 0 }}</strong></span>
+  </div>
+  {% endif %}
 </div>

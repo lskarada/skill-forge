@@ -827,7 +827,7 @@ wheels = [
 
 [[package]]
 name = "skill-forge"
-version = "0.3.2"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "gitpython" },
@@ -843,7 +843,7 @@ ui = [
     { name = "jinja2" },
     { name = "uvicorn", extra = ["standard"] },
 ]
-ui-test = [
+verify = [
     { name = "playwright" },
     { name = "pytest-playwright" },
 ]
@@ -855,9 +855,9 @@ requires-dist = [
     { name = "httpx", marker = "extra == 'ui'", specifier = ">=0.27,<1" },
     { name = "jinja2", marker = "extra == 'ui'", specifier = ">=3.1,<4" },
     { name = "jsonschema", specifier = ">=4.20" },
-    { name = "playwright", marker = "extra == 'ui-test'", specifier = ">=1.45,<2" },
+    { name = "playwright", marker = "extra == 'verify'", specifier = ">=1.40,<2" },
     { name = "pytest", specifier = ">=8.0" },
-    { name = "pytest-playwright", marker = "extra == 'ui-test'", specifier = ">=0.5,<1" },
+    { name = "pytest-playwright", marker = "extra == 'verify'", specifier = ">=0.5,<1" },
     { name = "typer", specifier = ">=0.12" },
     { name = "uvicorn", extras = ["standard"], marker = "extra == 'ui'", specifier = ">=0.27,<1" },
 ]

@@ -31,6 +31,14 @@ echo n | uv run forge optimize <skill> --workers 1
 
 The CLI has no `--workers 0`; `--workers` is clamped to `[1, 16]`.
 
+## Verification tiers
+
+Three pytest tiers, each gated by a marker excluded from the default `pytest tests/ -q` run:
+
+- **Default (unit):** `uv run pytest tests/ -q`. Fast (~4s), no subprocess, no browser. Must stay green.
+- **`tests/verify/` (dashboard browser):** `bin/verify-dashboard`. Boots a real `DashboardServer` + headless Chromium, drives a scripted event lifecycle, asserts the DOM mutates. Run after editing `dashboard/`. ~30s, no API spend.
+- **`tests/fresh_install/` (marketplace install):** `bin/verify-fresh-install`. Per-test `git clone --local` of the repo HEAD, drives `bin/forge` through cold uvx, asserts overfitted-to-SkillForge contracts (manifest version agreement, MUTATION_TARGET staging, terse-dispatch string, no-anthropic-import, 5x red greeter baseline). Automates Gate 2. ~10–12 min cold; test 5 early-exits in ~2 min on a broken-determinism failure.
+
 ## Layout
 
 - `src/skill_forge/cli.py` — Typer entry point.
@@ -92,8 +100,12 @@ only end-to-end proof a fresh user sees. Rules:
 1. Bump `pyproject.toml`, `.claude-plugin/plugin.json`,
    `.claude-plugin/marketplace.json` (two version fields).
 2. Gate 1: `uv run pytest tests/ -q` — all green.
-3. Gate 2 (if demo touched): 5 consecutive red baselines on a fresh
-   `git clone` of the repo, using `echo n | uv run forge optimize greeter --workers 1`.
+3. Gate 2 (if demo touched): `bin/verify-fresh-install` (~10–12 min) —
+   automates the 5 consecutive red baselines on a fresh `git clone`
+   plus 9 other overfitted contract tests (manifest version agreement,
+   load-bearing strings in `optimize.py`/`dispatch.py`, no-anthropic-
+   import, cold uvx resolves). Hand-run the bare command only if the
+   script can't be used.
 4. Gate 3 (if the loop logic changed): one full
    `uv run forge optimize greeter --workers 3 --yes` run on a fresh clone;
    verify Phase 5 merge commit exists.
@@ -105,48 +117,6 @@ Claude Code's `/plugin marketplace update` is a no-op on shallow
 marketplace clones. Documented in `README.md` with the nuke-and-re-add
 workaround. This is a Claude Code bug, not ours — don't try to fix it
 from this repo.
-
-## Dashboard verification loop (REQUIRED for any UI change)
-
-The dashboard has end-to-end behaviour that pytest unit tests can't
-verify: SSE actually delivering OOB swaps to the live DOM, click
-handlers covering both `<tr>` rows and SVG `<g>` bracket nodes, the
-elapsed clock advancing on the heartbeat without a manual reload. Two
-real bugs slipped through to a paying user before this loop existed;
-never again.
-
-**The contract: after editing any of**
-
-- `src/skill_forge/dashboard/static/*`
-- `src/skill_forge/dashboard/templates/*`
-- `src/skill_forge/dashboard/routes.py`
-- any code path that emits dashboard events
-
-**run the browser-driven verification loop before claiming the change
-works:**
-
-```bash
-uv run pytest tests/manual/test_dashboard_browser.py -m manual -v
-```
-
-It boots a real `DashboardServer` on a free port, launches headless
-Chromium via Playwright, drives the bus through scripted events, and
-asserts the DOM mutates exactly as a real user would observe — five
-assertions, ~13 seconds. If any fail, the dashboard is broken even
-if every unit test passes. Read the assertion message; it names
-the user-observable behaviour that broke.
-
-One-time setup on a fresh clone:
-
-```bash
-uv sync --extra ui --extra ui-test
-uv run playwright install chromium
-```
-
-The Playwright suite lives under `tests/manual/` and is excluded from
-the default pytest run via `addopts = "-m 'not manual'"` in
-`pyproject.toml`. CI doesn't run it (no browser); the local loop is
-where it lives.
 
 ## When in doubt
 

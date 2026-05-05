@@ -1,0 +1,66 @@
+#!/usr/bin/env bash
+# Local-dev verify loop for the fresh-install (marketplace) flow.
+#
+# Drives bin/forge against per-test `git clone --local` checkouts of
+# the repo HEAD, with cold UV_CACHE_DIR per session, asserting overfitted-
+# to-SkillForge contracts (CLAUDE.md non-obvious rules + SOUL.md
+# non-negotiables). Run after any change to:
+#   - pyproject.toml / .claude-plugin/*
+#   - bin/forge
+#   - src/skill_forge/optimize.py / dispatch.py / capture.py
+#   - .claude/skills/greeter/ / .skill-forge/tests/greeter/
+#
+# 10 tests across 4 files: 2 manifest, 4 static-grep, 2 uvx-install,
+# 2 demo-fixture (5x red baseline + capture-emits).
+#
+# Wall-clock: ~10-12 min cold, ~10 min warm. Dominated by the 5x
+# greeter baseline (Phase 1 dispatches real Claude Code subagents
+# per harness `run_skill` call ⇒ ~125s per iteration). Test 5 early-
+# exits on the first green run so a broken-determinism failure
+# surfaces in ~2 min.
+#
+# Usage:
+#   bin/verify-fresh-install              # full suite
+#   bin/verify-fresh-install <test-name>  # single test, e.g. manifest_versions
+#
+# This automates CLAUDE.md Gate 2 (5 consecutive red baselines on a
+# fresh git clone). Gate 3 (full Phase 1 → 5 mutation loop) stays
+# manual before tagging.
+
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+cd "$REPO_ROOT"
+
+if ! command -v uv >/dev/null 2>&1; then
+  cat >&2 <<EOF
+verify-fresh-install: requires \`uv\` on PATH.
+Install with one of:
+    brew install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+EOF
+  exit 127
+fi
+
+if ! command -v git >/dev/null 2>&1; then
+  echo "verify-fresh-install: requires \`git\` on PATH." >&2
+  exit 127
+fi
+
+# Make sure the dev env has pytest + project deps. `--inexact` is
+# load-bearing: a bare `uv sync` removes extras the user has already
+# installed (e.g. [ui] for dashboard tests, [verify] for browser
+# tests), which silently breaks unrelated suites with skip-on-import
+# guards. This tier itself uses stdlib + pytest + real subprocesses,
+# so no --extra flags are needed; --inexact preserves whatever the
+# user has.
+uv sync --inexact > /dev/null
+
+# Run the suite. -m fresh_install overrides the default exclusion. -x
+# stops on first failure to keep the loop tight.
+if [ -n "$1" ]; then
+  exec uv run pytest tests/fresh_install/ -m fresh_install -k "$1" -x -v
+else
+  exec uv run pytest tests/fresh_install/ -m fresh_install -x -v
+fi

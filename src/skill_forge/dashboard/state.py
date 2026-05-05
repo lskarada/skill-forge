@@ -53,6 +53,7 @@ class RunStats:
     merge_target: Optional[str] = None  # e.g. "v3"
     merged_count: int = 0
     elapsed: str = "0s"
+    elapsed_secs: int = 0  # raw seconds — drives client-side 1s ticker
 
 
 class RunState:
@@ -101,12 +102,16 @@ class RunState:
             self.baseline = TestCounts(evt.passed, evt.failed, evt.errors)  # type: ignore[attr-defined]
         elif kind == "WorkerSpawned":
             wid = evt.worker_id  # type: ignore[attr-defined]
+            spawned_at = getattr(evt, "spawned_at", None)
+            # Don't treat 0.0 as falsy — it's a real (boot-time) reading.
+            if spawned_at is None:
+                spawned_at = time.monotonic()
             self.workers[wid] = WorkerView(
                 id=wid,
                 strategy=getattr(evt, "strategy", ""),
                 status="queued",
                 phase="queued",
-                spawned_at=getattr(evt, "spawned_at", None) or None,
+                spawned_at=spawned_at,
             )
         elif kind == "WorkerStatus":
             wid = evt.worker_id  # type: ignore[attr-defined]
@@ -140,7 +145,8 @@ class RunState:
 
     def snapshot(self) -> dict:
         with self._lock:
-            elapsed = self._elapsed_locked()
+            elapsed_secs = self._elapsed_secs_locked()
+            elapsed = _format_elapsed(elapsed_secs)
             counts = self._counts_locked()
             stats = RunStats(
                 baseline=self.baseline,
@@ -151,6 +157,7 @@ class RunState:
                 merge_target=self.merge_target,
                 merged_count=self.merged_count,
                 elapsed=elapsed,
+                elapsed_secs=elapsed_secs,
             )
             now = time.monotonic()
             workers = [_worker_view_for_render(w, now) for w in _sorted_workers(self.workers)]
@@ -167,14 +174,14 @@ class RunState:
                 "parent_label": self.parent_label,
             }
 
-    def _elapsed_locked(self) -> str:
+    def _elapsed_secs_locked(self) -> int:
         if self.started_at is None:
-            return "0s"
+            return 0
         end = self.finished_at if self.finished_at is not None else time.monotonic()
-        secs = max(0, int(end - self.started_at))
-        if secs < 60:
-            return f"{secs}s"
-        return f"{secs // 60}m{secs % 60:02d}s"
+        return max(0, int(end - self.started_at))
+
+    def _elapsed_locked(self) -> str:
+        return _format_elapsed(self._elapsed_secs_locked())
 
     def _counts_locked(self) -> dict:
         merged = sum(1 for w in self.workers.values() if w.status == "merged" or w.merged)
@@ -253,7 +260,7 @@ def _sorted_workers(workers: dict[str, WorkerView]) -> list[WorkerView]:
 def _format_elapsed(seconds: int) -> str:
     if seconds < 60:
         return f"{seconds}s"
-    return f"{seconds // 60}m{seconds % 60}s"
+    return f"{seconds // 60}m{seconds % 60:02d}s"
 
 
 def _worker_view_for_render(w: WorkerView, now: float | None = None) -> dict:
@@ -279,6 +286,7 @@ def _worker_view_for_render(w: WorkerView, now: float | None = None) -> dict:
     return {
         "id": w.id,
         "strategy": w.strategy or "",
+        "strategy_tag": _strategy_tag(w.strategy),
         "status": w.status,
         "phase": w.phase,
         "tests": w.tests,
@@ -288,6 +296,17 @@ def _worker_view_for_render(w: WorkerView, now: float | None = None) -> dict:
         "status_label": label,
         "elapsed": elapsed,
     }
+
+
+def _strategy_tag(strategy: str | None) -> str:
+    """Short single-word tag for the bracket node — first word of the
+    strategy text, lowercased, max 14 chars. Empty if no strategy set."""
+    if not strategy:
+        return ""
+    parts = strategy.strip().split()
+    if not parts:
+        return ""
+    return parts[0].lower().strip(".,;:")[:14]
 
 
 # ---- module-global state (paired with the global event bus) -------------
