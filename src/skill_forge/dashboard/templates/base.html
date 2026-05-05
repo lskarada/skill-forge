@@ -14,21 +14,7 @@
 <div class="shell">
 
   <div class="topbar">
-    <div class="topbar-left">
-      <div class="logo">s f<span class="dot"></span></div>
-      <div class="path mono">{{ skill }}.skill</div>
-      <span id="status-pill" class="pill {{ pill_class }}">
-        {% if running %}<span class="pulse"></span>{% endif %}
-        {{ pill_label }}
-      </span>
-    </div>
-    <div class="topbar-right">
-      <span class="mono" id="run-id">{{ run_id }}</span>
-      <span class="sep">·</span>
-      <span id="phase-label">phase {{ phase }} / 5</span>
-      <span class="sep">·</span>
-      <span>auto-refresh</span>
-    </div>
+    {% include "_topbar.html" %}
   </div>
 
   <div class="stats" id="stats-row">
@@ -58,14 +44,7 @@
           <th style="width:64px;">ELAPSED</th>
         </tr>
       </thead>
-      <tbody id="workers-body">
-        {% for w in workers %}
-          {% include "_worker_row.html" %}
-        {% endfor %}
-        {% if not workers %}
-          <tr id="workers-empty"><td colspan="6" class="muted">no workers yet</td></tr>
-        {% endif %}
-      </tbody>
+      {% include "_workers_body.html" %}
     </table>
   </div>
 

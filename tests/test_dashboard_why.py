@@ -111,15 +111,18 @@ def test_elapsed_advances_under_heartbeat(monkeypatch) -> None:
         gen = routes_mod.sse_stream(
             env, bus, state, stop_event=stop, heartbeat_interval=0.1
         )
-        # Initial snapshot is 3 frames (stats, workers, bracket). Take
-        # the workers fragment as `first`.
+        # Initial snapshot is 5 frames: topbar, stats, counts, workers, bracket.
+        await gen.__anext__()  # topbar
         await gen.__anext__()  # stats
+        await gen.__anext__()  # counts
         first = await gen.__anext__()  # workers OOB at clock=1000
         await gen.__anext__()  # bracket
 
         clock["now"] = 1075.0
-        # Heartbeat is also 3 frames; take its workers fragment.
+        # Heartbeat is also 5 frames; take its workers fragment.
+        await asyncio.wait_for(gen.__anext__(), timeout=2)  # heartbeat topbar
         await asyncio.wait_for(gen.__anext__(), timeout=2)  # heartbeat stats
+        await asyncio.wait_for(gen.__anext__(), timeout=2)  # heartbeat counts
         second = await asyncio.wait_for(gen.__anext__(), timeout=2)  # heartbeat workers
         await asyncio.wait_for(gen.__anext__(), timeout=2)  # heartbeat bracket
         stop.set()

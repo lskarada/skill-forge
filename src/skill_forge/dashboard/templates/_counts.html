@@ -1,0 +1,7 @@
+{# Filter-pill counts in the workers-card head. Always emitted as four
+   tiny OOB-swap targets so they stay live without re-rendering the
+   surrounding workers-head. #}
+<span id="count-merged" hx-swap-oob="true">{{ counts.merged }}</span>
+<span id="count-discarded" hx-swap-oob="true">{{ counts.discarded }}</span>
+<span id="count-errored" hx-swap-oob="true">{{ counts.errored }}</span>
+<span id="count-active" hx-swap-oob="true">{{ counts.active }}</span>

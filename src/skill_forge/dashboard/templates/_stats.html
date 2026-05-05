@@ -24,8 +24,10 @@
     <span class="err">{{ counts.errored }} err</span>
   </div>
 </div>
-<div class="stat" id="stat-elapsed" hx-swap-oob="true">
+<div class="stat" id="stat-elapsed" hx-swap-oob="true"
+     data-elapsed-secs="{{ stats.elapsed_secs }}"
+     data-running="{{ '1' if running else '0' }}">
   <div class="label">elapsed</div>
-  <div class="value">{{ stats.elapsed }}</div>
+  <div class="value" id="elapsed-value">{{ stats.elapsed }}</div>
   <div class="sub">{% if running %}running now{% else %}finished{% endif %}</div>
 </div>

@@ -1,0 +1,10 @@
+{# Full tbody fragment — OOB-swappable so we don't have to track
+   per-row insertion vs. update. Idempotent. #}
+<tbody id="workers-body"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  {% for w in workers %}
+    {% include "_worker_row.html" %}
+  {% endfor %}
+  {% if not workers %}
+    <tr id="workers-empty"><td colspan="6" class="muted">no workers yet</td></tr>
+  {% endif %}
+</tbody>

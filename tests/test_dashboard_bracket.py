@@ -112,17 +112,23 @@ def test_bracket_renders_after_scripted_run() -> None:
     with TestClient(app) as c:
         body = c.get("/").text
     assert 'id="bracket"' in body
-    assert body.count("<circle") == 4
-    # The merged-winner is wrapped in <g data-worker-id="w0"> with a
-    # nested <circle class="bracket-node-merged">. data-worker-id sits
-    # on the <g> so SVG clicks on either the circle or its label
-    # resolve to the same worker.
+    # Count circles inside the bracket SVG only — the bracket card may
+    # also contain a sparkline SVG with its own dots, which are not part
+    # of the tournament bracket itself.
+    import re as _re
+    bracket_svg = _re.search(r'class="bracket-svg".*?</svg>', body, _re.DOTALL)
+    assert bracket_svg, "bracket SVG not found"
+    assert bracket_svg.group(0).count("<circle") == 4
+    # The merged-winner circle has data-worker-id="w0"
     import re
-    g_block = re.search(
-        r'<g[^>]*data-worker-id="w0"[^>]*>.*?</g>', body, re.DOTALL,
+    merged_circle = re.search(
+        r'<circle[^>]*class="[^"]*bracket-node-merged[^"]*"[^>]*data-worker-id="w0"',
+        body,
+    ) or re.search(
+        r'<circle[^>]*data-worker-id="w0"[^>]*class="[^"]*bracket-node-merged[^"]*"',
+        body,
     )
-    assert g_block, "merged-winner <g data-worker-id=w0> not found"
-    assert "bracket-node-merged" in g_block.group(0)
+    assert merged_circle, "merged-winner circle missing data-worker-id=w0"
 
 
 def test_bracket_oob_swap_on_worker_status_change() -> None:

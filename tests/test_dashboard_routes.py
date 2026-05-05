@@ -109,10 +109,12 @@ def test_sse_delivers_in_order() -> None:
             # Yield so call_soon_threadsafe runs and queues advance.
             await asyncio.sleep(0)
 
-        # Each event triggers `_fragments_for_event` returning 2 fragments
-        # (stats + worker_row). 3 events × 2 fragments = 6 frames.
+        # Snapshot emits 5 frames (topbar, stats, counts, workers, bracket).
+        # We drained 2, so 3 leftover sit in the queue. Each WorkerSpawned
+        # then emits 5 fragments. 3 leftover + 3 × 5 = 18 frames total —
+        # drain them all so we can assert each w0/w1/w2 appears.
         emit_frames = []
-        for _ in range(6):
+        for _ in range(3 + 3 * 5):
             emit_frames.append(await asyncio.wait_for(gen.__anext__(), timeout=2))
         stop.set()
 
@@ -151,10 +153,12 @@ def test_sse_reconnect_resends_snapshot() -> None:
         for _ in range(2):
             stop = asyncio.Event()
             gen = routes_mod.sse_stream(env, bus, state, stop_event=stop)
-            f1 = await gen.__anext__()
-            f2 = await gen.__anext__()
+            # Initial snapshot now emits 5 frames: topbar, stats, counts, workers, bracket.
+            buf = ""
+            for _ in range(5):
+                buf += await gen.__anext__()
             stop.set()
-            results.append(f1 + f2)
+            results.append(buf)
         return results
 
     a, b = asyncio.run(drain_two_subs())

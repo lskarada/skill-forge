@@ -1,0 +1,18 @@
+{# Topbar fragment — left/right halves are individually OOB-swappable
+   so RunStarted/PhaseChanged/RunFinished update them without forcing
+   a full page reload. #}
+<div class="topbar-left" id="topbar-left"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <div class="logo">s f<span class="dot"></span></div>
+  <div class="path mono">{{ skill }}.skill</div>
+  <span id="status-pill" class="pill {{ pill_class }}">
+    {% if running %}<span class="pulse"></span>{% endif %}
+    {{ pill_label }}
+  </span>
+</div>
+<div class="topbar-right" id="topbar-right"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <span class="mono" id="run-id">{{ run_id }}</span>
+  <span class="sep">·</span>
+  <span id="phase-label">phase {{ phase }} / 5</span>
+  <span class="sep">·</span>
+  <span>auto-refresh</span>
+</div>
