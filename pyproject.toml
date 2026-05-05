@@ -38,8 +38,9 @@ packages = ["src/skill_forge"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-m 'not manual and not verify'"
+addopts = "-m 'not manual and not verify and not fresh_install'"
 markers = [
     "manual: tests requiring real subprocesses or browsers, excluded from default CI",
     "verify: real-browser dashboard verification loop (Playwright, headless Chromium)",
+    "fresh_install: cold uvx-install simulation against a fresh git clone, excluded from default CI",
 ]
