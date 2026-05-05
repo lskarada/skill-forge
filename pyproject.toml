@@ -18,14 +18,10 @@ ui = [
     "jinja2>=3.1,<4",
     "httpx>=0.27,<1",
 ]
-
-# Browser-driven verification loop. Heavy (Playwright pulls Chromium),
-# only used when iterating on dashboard/ files.  Run:
-#   uv sync --extra ui --extra ui-test
-#   uv run playwright install chromium
-#   uv run pytest tests/manual/test_dashboard_browser.py -m manual
-ui-test = [
-    "playwright>=1.45,<2",
+# Local-dev verification loop. Headless Chromium drives the live
+# dashboard end-to-end. Not shipped to plugin users.
+verify = [
+    "playwright>=1.40,<2",
     "pytest-playwright>=0.5,<1",
 ]
 
@@ -42,7 +38,8 @@ packages = ["src/skill_forge"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["src"]
-addopts = "-m 'not manual'"
+addopts = "-m 'not manual and not verify'"
 markers = [
     "manual: tests requiring real subprocesses or browsers, excluded from default CI",
+    "verify: real-browser dashboard verification loop (Playwright, headless Chromium)",
 ]

@@ -1,0 +1,39 @@
+#!/usr/bin/env bash
+# Local-dev verify loop for the dashboard.
+#
+# Boots a real DashboardServer, opens headless Chromium, drives a
+# scripted event lifecycle, asserts the DOM mutates. Run this after
+# any change to:
+#   - src/skill_forge/dashboard/static/*
+#   - src/skill_forge/dashboard/templates/*
+#   - src/skill_forge/dashboard/{routes,state,events,server}.py
+#
+# First run installs the [verify] extras + Chromium binary; subsequent
+# runs reuse the cache and complete in < 30s.
+#
+# Usage:
+#   bin/verify-dashboard                # full suite
+#   bin/verify-dashboard <test-name>    # single test, e.g. bracket_node_click
+
+set -e
+
+SCRIPT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )" && pwd )"
+REPO_ROOT="$( cd "$SCRIPT_DIR/.." && pwd )"
+cd "$REPO_ROOT"
+
+# Make sure both extras are installed.
+uv sync --extra ui --extra verify > /dev/null
+
+# Make sure Chromium is on disk.
+if ! uv run python -c "from playwright.sync_api import sync_playwright; sync_playwright().__enter__().chromium.executable_path" >/dev/null 2>&1; then
+  echo "→ installing Chromium (one-time)…"
+  uv run playwright install chromium
+fi
+
+# Run the suite. -m verify overrides the default exclusion. -x stops
+# on first failure to keep the loop tight.
+if [ -n "$1" ]; then
+  exec uv run pytest tests/verify/ -m verify -k "$1" -x -v
+else
+  exec uv run pytest tests/verify/ -m verify -x -v
+fi
