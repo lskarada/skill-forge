@@ -162,3 +162,32 @@ def _parse_junit_xml(path: Path) -> dict[str, int]:
         "errors": errors,
         "skipped": skipped,
     }
+
+
+# --- v0.5: paper §C weighted multi-tolerance score ------------------------
+
+# Tolerance grid from EvoSkill paper §C, Algorithm 1: scores are aggregated
+# across these tolerances with weight w(τ) = 1 / (1 + 20·τ), normalized so
+# strict tolerance dominates without zeroing the contributions of loose ones.
+TAU_GRID: tuple[float, ...] = (0.0, 0.01, 0.025, 0.05, 0.10)
+
+
+def _normalized_weights() -> dict[float, float]:
+    raw = {tau: 1.0 / (1.0 + 20.0 * tau) for tau in TAU_GRID}
+    total = sum(raw.values())
+    return {tau: w / total for tau, w in raw.items()}
+
+
+_WEIGHTS = _normalized_weights()
+
+
+def weighted_score(pass_rates: dict[float, float]) -> float:
+    """Aggregate per-tolerance pass rates into a single score in [0, 1].
+
+    `pass_rates` maps each τ in TAU_GRID to the pass rate at that tolerance
+    (a float in [0, 1]). Tolerances missing from the dict default to 0.
+
+    Used by `evolve.py` to score candidates on the validation set; the
+    frontier admit/evict logic in `frontier.py` consumes the returned float.
+    """
+    return sum(_WEIGHTS[tau] * pass_rates.get(tau, 0.0) for tau in TAU_GRID)
