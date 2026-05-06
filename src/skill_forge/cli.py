@@ -376,6 +376,67 @@ def evolve(
 
 
 @app.command()
+def transfer(
+    source: str = typer.Argument(
+        ..., help="Source skill name (under .claude/skills/<source>/).",
+    ),
+    target_slot: str = typer.Argument(
+        ..., help="Target slot name (under .claude/skills/<target_slot>/). "
+                  "Created if missing.",
+    ),
+    skills_root: Path = typer.Option(
+        Path.cwd() / ".claude" / "skills",
+        "--skills-root",
+        help="Root for skill directories (default: ./.claude/skills).",
+    ),
+) -> None:
+    """v0.6: Copy `source` skill folder into `target_slot` and report the
+    target's pre/post pass-rate delta.
+
+    The actual test invocation runs against `.skill-forge/tests/<target_slot>/`
+    via the existing pytest harness. Use this primitive to demonstrate
+    cross-skill transfer; v0.8 retro composes it for portfolio surfacing.
+    """
+    from skill_forge import transfer as transfer_mod
+    from skill_forge.baseline import run_pytest
+
+    src_dir = skills_root / source
+    if not src_dir.exists():
+        # Fall back to single-file SKILL.md
+        single = skills_root / source / "SKILL.md"
+        if single.is_file():
+            src_dir = single
+        else:
+            raise typer.Exit(code=1)
+
+    tgt_dir = skills_root / target_slot
+
+    output_root = Path.cwd() / ".skill-forge"
+    tests_dir = output_root / "tests" / target_slot
+
+    def _runner(_slot: Path) -> tuple[int, int]:
+        if not tests_dir.is_dir():
+            return (0, 0)
+        result = run_pytest(
+            tests_dir=tests_dir,
+            junit_path=output_root / "transfer.junit.xml",
+            cwd=Path.cwd(),
+        )
+        return (result.passed, result.total)
+
+    report = transfer_mod.run_transfer(
+        source_skill_dir=src_dir,
+        target_slot_dir=tgt_dir,
+        run_target_tests=_runner,
+    )
+    typer.echo(
+        f"transfer: pass_before={report.pass_before}/{report.total} "
+        f"pass_after={report.pass_after}/{report.total} "
+        f"delta={'+' if report.delta >= 0 else ''}{report.delta}"
+    )
+
+
+@app.command()
 def status(
     skill: str | None = typer.Option(
         None,
