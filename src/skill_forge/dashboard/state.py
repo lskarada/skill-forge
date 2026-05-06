@@ -43,6 +43,7 @@ class WorkerView:
     delta_pass: Optional[int] = None  # vs. baseline
     merged: bool = False  # convenience flag for kept-row CSS
     spawned_at: Optional[float] = None  # time.monotonic at spawn (for live clock)
+    last_proposal: Optional[object] = None  # v0.4: Proposer JSON, consumed by v0.7 why-rail
 
 
 @dataclass
@@ -140,6 +141,10 @@ class RunState:
         elif kind == "RunFinished":
             self.running = False
             self.finished_at = time.monotonic()
+        elif kind == "MutationProposal":
+            wid = evt.worker_id  # type: ignore[attr-defined]
+            w = self.workers.setdefault(wid, WorkerView(id=wid))
+            w.last_proposal = evt.proposal  # type: ignore[attr-defined]
 
     # ---- read side ---------------------------------------------------
 

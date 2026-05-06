@@ -92,6 +92,19 @@ class RunFinished:
     kind: str = "RunFinished"
 
 
+@dataclass(frozen=True)
+class MutationProposal:
+    """Emitted by dispatch.mutate_skill after the Proposer subagent returns
+    its JSON proposal, before the Skill-Builder edits the SUT.
+
+    The v0.4 consumer is RunState.workers[worker_id].last_proposal; the v0.7
+    why-rail (Task 7.6) renders that field. No HTML template change in v0.4.
+    """
+    worker_id: str
+    proposal: object  # JSON-shaped dict; left typed as object to avoid coupling
+    kind: str = "MutationProposal"
+
+
 @dataclass
 class EventBus:
     """Thread-safe event bus.
