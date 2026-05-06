@@ -30,3 +30,19 @@ def read_recent(log: Path, n: int) -> list[FeedbackEntry]:
         return []
     lines = log.read_text(encoding="utf-8").splitlines()[-n:]
     return [FeedbackEntry(**json.loads(line)) for line in lines]
+
+
+def project_to_learnings(log: Path, learnings_md: Path) -> None:
+    if not log.exists():
+        return
+    losses = [
+        e for e in (FeedbackEntry(**json.loads(l))
+                    for l in log.read_text(encoding="utf-8").splitlines())
+        if e.verdict == "discarded"
+    ]
+    body = "\n".join(
+        f"[{e.ts}] [{e.skill}] iter={e.iter} action={e.action}: {e.reason}."
+        for e in losses
+    )
+    learnings_md.parent.mkdir(parents=True, exist_ok=True)
+    learnings_md.write_text(body + ("\n" if body else ""), encoding="utf-8")
