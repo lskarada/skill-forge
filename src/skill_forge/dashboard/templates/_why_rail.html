@@ -1,0 +1,28 @@
+{# v0.7 Mission Control — right-side "Why" rail.
+   Renders one panel per worker showing the Proposer JSON
+   (RunState.workers[wid].last_proposal) and a link to the corresponding
+   feedback_history.jsonl entry. Bidirectional hover linking is wired by
+   app.js via `data-worker-id` matching.
+#}
+<aside id="why-rail" class="why-rail"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <h4 class="why-rail-head">Why</h4>
+  {% for w in workers %}
+    {% set lp = w.last_proposal %}
+    <section class="why-panel"
+             data-worker-id="{{ w.id }}"
+             {% if not lp %}data-empty="1"{% endif %}>
+      <header class="why-panel-head">
+        <span class="why-worker-id">{{ w.id }}</span>
+        {% if lp %}
+          <span class="why-action">{{ lp.action }}</span>
+        {% endif %}
+      </header>
+      {% if lp %}
+        <div class="why-proposed">{{ lp.proposed_skill }}</div>
+        <div class="why-justification">{{ lp.justification }}</div>
+      {% else %}
+        <div class="why-empty">no proposal yet</div>
+      {% endif %}
+    </section>
+  {% endfor %}
+</aside>

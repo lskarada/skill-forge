@@ -1,0 +1,3 @@
+{"role": "user", "text": "format these as a JSON envelope: foo, bar"}
+{"role": "assistant", "text": "Using greeter to format", "tool_calls": ["Skill: greeter"]}
+{"role": "user", "text": "no, the output isn't tagged with _schema"}

@@ -80,6 +80,64 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **No direct Anthropic API calls.** All mutation happens through
   Claude Code subagents (`/forge:optimize`) so the user pays what they
   were going to pay anyway.
+- **Mutation runs as Proposer → Builder, two subagents.** Splitting them
+  was the difference between 14 "no diff" rounds and a one-shot win on
+  greeter. Don't fuse them back into one prompt.
+- **`feedback_history.jsonl` is the source of truth for prior iterations.**
+  `learnings.md` is a one-way projection for the dashboard. Mutators read
+  the JSONL via `feedback_history.read_recent()`, never the .md.
+- **Frontier is git-tag-backed (`frontier/<skill>/g<N>-w<W>`).** Programs
+  round-trip through `program.yaml`; do not store frontier state in JSON
+  or sqlite — git is the source of truth so a fresh clone observes the
+  full history.
+- **`evolve.run_evolution` composes `optimize.run_optimize` via a kwarg.**
+  Direct edits to `optimize.py` outside lines 205–216 / 685–696 stay
+  forbidden.
+- **`forge transfer` is a primitive, not a workflow.** Use it to copy
+  a skill into a sibling slot for evaluation; the *workflow* that
+  composes transfer with retro lives in v0.8.
+- **Mission Control fragments (`_lineage.html`, `_frontier.html`,
+  `_sparkline.html`) are reused by v0.8's `_campaign.html` as a grid
+  of mini-Mission-Controls.** Do not branch the templates per surface.
+- **`forge retro` is the product surface.** v0.4–v0.7 are substrate.
+  When evaluating new feature proposals, ask "does this move us toward
+  retro evolution, or sideways?" — sideways is suspect.
+- **Synthesized tests must pass the N-red baseline gate (SOUL §1; default
+  N=5).** Failing tests are written to `.skill-forge/synthesis_rejects/`,
+  surfaced in the campaign dashboard pane, never silently dropped.
+- **Pain heuristic is English-only (S12).** Non-English complaint
+  phrasing falls through to error-signature attribution only.
+  Multilingual ingestion is a v0.9 candidate.
+- **`forge retro --background` is a detached subprocess, not a daemon
+  (R10).** Survives terminal close (via `start_new_session=True`) but
+  not machine reboot. Cancellation: `forge retro --kill`
+  (reads `.skill-forge/retro.pid`).
+- **v0.8.1 wired real mutation through evolve + retro.** The
+  `forge evolve` / `forge retro` CLI now calls
+  `evolve.build_real_run_one_generation()` which translates
+  `run_optimize` worker results into `FrontierEntry` candidates the
+  multi-gen orchestrator admits/evicts. Live dashboard consumes
+  `GenerationStarted` / `FrontierUpdated` / `SparklineSample` events
+  (emitted by `run_evolution` when `emit_dashboard_events=True`) and
+  re-renders the lineage strip, evo-tree, frontier card, sparkline,
+  strategy chips and why-rail panels via OOB swaps.
+- **`pain.ingest` defaults to a 24h recency window.** Fresh `forge
+  retro` runs don't re-read months of historical transcripts; pass
+  `since=None` to disable for fixture-driven runs.
+- **`dispatch.mutate_skill` is resilient to non-JSON Proposer output.**
+  A malformed propose response returns a sentinel summary
+  ("(proposer JSON unparseable: ...)") and the worker is treated as
+  no_change; no crash, no swallowed failure (SOUL §5).
+- **v0.8.2 wired the Synthesis subagent.** `forge retro` now drives the
+  full north-star user journey:
+    pain.ingest → attribution.attribute → synthesis.synthesize_test
+    (writes test_<ts>.py + replays/<ts>.json under
+    `.skill-forge/tests/<skill>/`, gated by AST validator + 5x red
+    baseline) → campaign.run_campaign (parallel mutation tournaments)
+    → Portfolio (merged updates with evidence files).
+  Rejected synthesized tests land in
+  `.skill-forge/synthesis_rejects/<skill>/` with a sibling .why.md
+  per SOUL §5.
 
 ## Demo fixture is load-bearing
 

@@ -1,0 +1,11 @@
+{
+  "replay_version": "1",
+  "captured_at": "2026-05-05T17:15:00",
+  "source_transcript": "docs/DEMO.md#scribe-fixture",
+  "source_turn_index": 0,
+  "replay_mode": "full_conversation",
+  "conversation": [
+    {"role": "user", "content": "Make a markdown list of these breads: sourdough, rye, ciabatta"}
+  ],
+  "trigger_turn_index": 0
+}

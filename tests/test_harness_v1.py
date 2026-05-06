@@ -159,4 +159,8 @@ def test_run_skill_exports_match_prd_v1() -> None:
         "assert_json_has_field",
         "assert_matches_schema",
         "assert_min_sources",
+        # v0.6 (additive — paper §C scoring wrapper).
+        "assert_answer_matches",
+        # v0.8 (additive — retro-flow pain-signature assertion).
+        "assert_pain_resolved",
     }

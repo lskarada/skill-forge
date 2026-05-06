@@ -1,0 +1,20 @@
+{# v0.7 Mission Control — top-bar lineage strip.
+   Baseline → v1 → v2 → ... → current. Each node is a clickable chip
+   carrying `data-lineage-label`; the why-rail wires hover-link to it.
+#}
+<div id="lineage" class="lineage-strip"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <h4 class="lineage-head">Lineage</h4>
+  <ol class="lineage-nodes">
+    {% if generations %}
+      {% for g in generations %}
+        <li class="lineage-node{% if loop.last %} lineage-current{% endif %}"
+            data-lineage-label="{{ g.label }}">
+          <span class="lineage-label">{{ g.label }}</span>
+          <span class="lineage-score">{{ "%.2f"|format(g.score) }}</span>
+        </li>
+      {% endfor %}
+    {% else %}
+      <li class="lineage-node lineage-empty">no generations yet</li>
+    {% endif %}
+  </ol>
+</div>

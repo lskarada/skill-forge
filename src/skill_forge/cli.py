@@ -323,6 +323,268 @@ def improve(
 
 
 @app.command()
+def evolve(
+    skill: str = typer.Argument(
+        ...,
+        help="Skill name (looked up in .claude/skills/<skill>/SKILL.md).",
+    ),
+    generations: int = typer.Option(
+        3, "--generations", "-g", min=1, max=20,
+        help="Number of evolution generations (default: 3).",
+    ),
+    frontier_size: int = typer.Option(
+        3, "--frontier-size", min=1, max=10,
+        help="Top-K Pareto frontier size (default: 3, paper §D).",
+    ),
+    workers: int = typer.Option(
+        3, "--workers", "-w", min=1, max=16,
+        help="Mutation workers per generation (default: 3).",
+    ),
+    patience: int = typer.Option(
+        2, "--patience", min=1, max=10,
+        help="Stop after this many stagnant generations (default: 2).",
+    ),
+) -> None:
+    """v0.5: Run a multi-generation Pareto-frontier evolution against `skill`.
+
+    Wraps the v0.4 single-gen mutation loop. Frontier is persisted as
+    git tags `frontier/<skill>/g<N>-w<W>` (see git_tags.py); each entry
+    has a sibling program.yaml. Use `git tag -l 'frontier/<skill>/*'`
+    after the run to inspect surviving programs.
+    """
+    from skill_forge import evolve as evolve_mod
+
+    real_one_gen = evolve_mod.build_real_run_one_generation(
+        output_root=Path.cwd() / ".skill-forge",
+        repo_path=Path.cwd(),
+        assume_yes=True,
+        printer=typer.echo,
+    )
+
+    result = evolve_mod.run_evolution(
+        skill=skill,
+        generations=generations,
+        frontier_size=frontier_size,
+        workers_per_gen=workers,
+        patience=patience,
+        run_one_generation=real_one_gen,
+        emit_dashboard_events=True,
+    )
+    typer.echo(
+        f"evolve: gens={result.generations_run} "
+        f"early_stopped={result.early_stopped} "
+        f"winner={result.winner.id if result.winner else None}"
+    )
+
+
+@app.command()
+def retro(
+    pain_from: Path | None = typer.Option(
+        None, "--pain-from",
+        help="Override transcripts directory (default: cwd-resolved "
+             "~/.claude/projects/<encoded>).",
+    ),
+    workers_per_skill: int = typer.Option(
+        3, "--workers-per-skill", min=1, max=16,
+        help="Mutation workers per attributed skill (default 3).",
+    ),
+    generations: int = typer.Option(
+        2, "--generations", "-g", min=1, max=20,
+        help="Number of evolution generations per skill (default 2).",
+    ),
+    baseline_runs: int = typer.Option(
+        5, "--baseline-runs", min=3, max=20,
+        help="N consecutive red-baseline runs required to admit a "
+             "synthesized test (default 5; SOUL §1).",
+    ),
+    min_confidence: str = typer.Option(
+        "low", "--min-confidence",
+        help="Filter attributions by confidence: low | medium | high.",
+    ),
+    background: bool = typer.Option(
+        False, "--background",
+        help="Run retro as a detached subprocess; PID written to "
+             ".skill-forge/retro.pid.",
+    ),
+    kill: bool = typer.Option(
+        False, "--kill",
+        help="Kill any running retro by reading .skill-forge/retro.pid.",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Auto-confirm."),
+) -> None:
+    """v0.8 capstone: retrospective skill evolution from session pain.
+
+    Reads recent Claude Code transcripts + git diff, attributes pain to
+    specific skills in the local library, synthesizes regression tests
+    from the rough turns, runs concurrent multi-skill tournaments, and
+    surfaces a portfolio of merged improvements.
+    """
+    from skill_forge import retro as retro_mod
+    from skill_forge import retro_lifecycle as rl
+
+    if kill:
+        ok = rl.kill_background()
+        typer.echo("retro: killed background run." if ok else "retro: no background run found.")
+        raise typer.Exit(0)
+
+    if background:
+        # Re-exec ourselves without --background (avoid infinite spawn).
+        import sys as _sys
+        cmd = [_sys.argv[0], "retro",
+               "--workers-per-skill", str(workers_per_skill),
+               "--generations", str(generations),
+               "--baseline-runs", str(baseline_runs),
+               "--min-confidence", min_confidence]
+        if pain_from is not None:
+            cmd += ["--pain-from", str(pain_from)]
+        if yes:
+            cmd.append("--yes")
+        pid = rl._spawn_background(cmd=cmd)
+        typer.echo(f"retro: launched background run (PID {pid}).")
+        raise typer.Exit(0)
+
+    # Resolve transcripts dir
+    if pain_from is None:
+        from skill_forge.pain import resolve_transcripts_dir
+        try:
+            pain_from = resolve_transcripts_dir(Path.cwd())
+        except Exception as e:
+            typer.echo(f"retro: {e}")
+            raise typer.Exit(1) from None
+
+    # Skills inventory: scan .claude/skills/*/SKILL.md
+    skills_root = Path.cwd() / ".claude" / "skills"
+    inventory: set[str] = set()
+    if skills_root.is_dir():
+        for child in skills_root.iterdir():
+            if child.is_dir() and (child / "SKILL.md").is_file():
+                inventory.add(child.name)
+
+    from skill_forge import evolve as _evolve_mod
+    from skill_forge import synthesis as _synthesis_mod
+    from skill_forge.dispatch import _RealSubagentIO
+
+    output_root_path = Path.cwd() / ".skill-forge"
+
+    real_one_gen = _evolve_mod.build_real_run_one_generation(
+        output_root=output_root_path,
+        repo_path=Path.cwd(),
+        assume_yes=True,
+        printer=typer.echo,
+    )
+
+    # v0.8.2: real Synthesis subagent. The Synthesizer dispatches Claude
+    # Code via _RealSubagentIO; each admitted test passes through the
+    # AST validator + N-red baseline gate.
+    synth_io = _RealSubagentIO(cwd=Path.cwd())
+
+    def _skill_loader(skill_name: str) -> str:
+        sut = Path.cwd() / ".claude" / "skills" / skill_name / "SKILL.md"
+        if sut.is_file():
+            return sut.read_text(encoding="utf-8")
+        return f"# (no SKILL.md found at {sut})"
+
+    def _real_synthesize(skill_name: str, attr) -> object | None:
+        runner = _synthesis_mod.make_real_baseline_runner(
+            repo_path=Path.cwd(), skill=skill_name,
+        )
+        # Pull the matching attribution from the captured outer scope —
+        # campaign passes (skill, attr) so we trust attr here.
+        from skill_forge.pain import ingest as _ingest
+        pain_obj = _ingest(
+            transcripts_dir=pain_from, git_diff_path=None, since=None,
+        )
+        result = _synthesis_mod.synthesize_test(
+            pain=pain_obj, attribution=attr, io=synth_io,
+            output_root=output_root_path,
+            skill_loader=_skill_loader,
+            baseline_runner=runner,
+            n_runs=baseline_runs,
+        )
+        return result.admitted_path
+
+    portfolio = retro_mod.run(
+        transcripts_dir=pain_from,
+        git_diff_path=None,
+        skills_inventory=inventory,
+        generations=generations,
+        frontier_size=2,
+        workers_per_skill=workers_per_skill,
+        patience=2,
+        min_confidence=min_confidence,
+        run_one_generation=real_one_gen,
+        synthesize_test=_real_synthesize,
+    )
+    for entry in portfolio.entries:
+        prefix = "✓" if entry.accepted else "✗"
+        typer.echo(
+            f"{prefix} {entry.skill}: {entry.confidence} · "
+            f"score={entry.score:.3f} · {entry.reason}"
+        )
+
+
+@app.command()
+def transfer(
+    source: str = typer.Argument(
+        ..., help="Source skill name (under .claude/skills/<source>/).",
+    ),
+    target_slot: str = typer.Argument(
+        ..., help="Target slot name (under .claude/skills/<target_slot>/). "
+                  "Created if missing.",
+    ),
+    skills_root: Path = typer.Option(
+        Path.cwd() / ".claude" / "skills",
+        "--skills-root",
+        help="Root for skill directories (default: ./.claude/skills).",
+    ),
+) -> None:
+    """v0.6: Copy `source` skill folder into `target_slot` and report the
+    target's pre/post pass-rate delta.
+
+    The actual test invocation runs against `.skill-forge/tests/<target_slot>/`
+    via the existing pytest harness. Use this primitive to demonstrate
+    cross-skill transfer; v0.8 retro composes it for portfolio surfacing.
+    """
+    from skill_forge import transfer as transfer_mod
+    from skill_forge.baseline import run_pytest
+
+    src_dir = skills_root / source
+    if not src_dir.exists():
+        # Fall back to single-file SKILL.md
+        single = skills_root / source / "SKILL.md"
+        if single.is_file():
+            src_dir = single
+        else:
+            raise typer.Exit(code=1)
+
+    tgt_dir = skills_root / target_slot
+
+    output_root = Path.cwd() / ".skill-forge"
+    tests_dir = output_root / "tests" / target_slot
+
+    def _runner(_slot: Path) -> tuple[int, int]:
+        if not tests_dir.is_dir():
+            return (0, 0)
+        result = run_pytest(
+            tests_dir=tests_dir,
+            junit_path=output_root / "transfer.junit.xml",
+            cwd=Path.cwd(),
+        )
+        return (result.passed, result.total)
+
+    report = transfer_mod.run_transfer(
+        source_skill_dir=src_dir,
+        target_slot_dir=tgt_dir,
+        run_target_tests=_runner,
+    )
+    typer.echo(
+        f"transfer: pass_before={report.pass_before}/{report.total} "
+        f"pass_after={report.pass_after}/{report.total} "
+        f"delta={'+' if report.delta >= 0 else ''}{report.delta}"
+    )
+
+
+@app.command()
 def status(
     skill: str | None = typer.Option(
         None,

@@ -1,0 +1,30 @@
+{# v0.8 Mission Control — campaign view: M parallel mini-Mission-Controls.
+   One panel per attributed skill, embedding v0.7's lineage strip + frontier
+   card. Synthesis-rejects pane sits below each panel.
+#}
+<section id="campaign" class="campaign-grid"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <h3 class="campaign-head">Campaign — {{ campaign.entries|length }} skill{{ "s" if campaign.entries|length != 1 else "" }}</h3>
+  <div class="campaign-panels">
+    {% for entry in campaign.entries %}
+      <article class="campaign-panel" data-skill="{{ entry.skill }}">
+        <header class="campaign-panel-head">
+          <span class="campaign-skill">{{ entry.skill }}</span>
+          <span class="campaign-conf campaign-conf-{{ entry.confidence }}">{{ entry.confidence }}</span>
+          {% if entry.accepted %}
+            <span class="campaign-accepted">accepted</span>
+          {% else %}
+            <span class="campaign-rejected">{{ entry.reason }}</span>
+          {% endif %}
+        </header>
+        <div class="campaign-score">
+          {% if entry.accepted %}
+            score {{ "%.3f"|format(entry.score) }}
+          {% else %}
+            —
+          {% endif %}
+        </div>
+        {% include "_synthesis_rejects.html" %}
+      </article>
+    {% endfor %}
+  </div>
+</section>

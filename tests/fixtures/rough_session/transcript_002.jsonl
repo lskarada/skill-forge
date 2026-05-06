@@ -1,0 +1,2 @@
+{"role": "user", "text": "wrong, I needed bullets — make markdown of [sourdough, rye, ciabatta]"}
+{"role": "assistant", "text": "Using scribe — got TypeError on parse", "tool_calls": ["Skill: scribe"]}

@@ -1,0 +1,20 @@
+{# v0.8 Mission Control — synthesized-test rejects pane.
+   Lists tests rejected by the AST validator or the N-red baseline gate
+   so they aren't silently dropped (SOUL §5: "failure is memory").
+#}
+{% set rejects = (entry.synthesis_rejects if entry is defined and entry.synthesis_rejects is defined else []) %}
+<details class="synthesis-rejects">
+  <summary>{{ rejects|length }} synthesis reject{{ "s" if rejects|length != 1 else "" }}</summary>
+  {% if rejects %}
+    <ul class="synthesis-rejects-list">
+      {% for r in rejects %}
+        <li>
+          <span class="synthesis-reject-reason">{{ r.reason }}</span>
+          <a class="synthesis-reject-link" href="{{ r.path }}">{{ r.path }}</a>
+        </li>
+      {% endfor %}
+    </ul>
+  {% else %}
+    <p class="synthesis-rejects-empty">All synthesized tests admitted.</p>
+  {% endif %}
+</details>

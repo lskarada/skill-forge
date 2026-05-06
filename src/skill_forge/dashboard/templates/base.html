@@ -21,7 +21,20 @@
     {% include "_stats.html" %}
   </div>
 
+  {# v0.7.1 Mission Control strips above the bracket. #}
+  {% include "_lineage.html" %}
+
+  <div class="evo-row">
+    {% include "_evo_tree.html" %}
+    <div class="evo-side">
+      {% include "_frontier.html" %}
+      {% include "_sparkline.html" %}
+    </div>
+  </div>
+
   {% include "_bracket.html" %}
+
+  {% include "_strategy_chips.html" %}
 
   <div class="workers-card">
     <div class="workers-head">
@@ -47,6 +60,8 @@
       {% include "_workers_body.html" %}
     </table>
   </div>
+
+  {% include "_why_rail.html" %}
 
 </div>
 

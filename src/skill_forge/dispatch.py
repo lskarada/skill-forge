@@ -192,6 +192,21 @@ def draft_capture(transcript_excerpt: str, target_hint: str | None) -> dict[str,
 # --- mutation subagent ----------------------------------------------------
 
 
+class _RealSubagentIO:
+    """Default subagent IO: shells out to `claude -p` via run_claude."""
+
+    def __init__(self, *, cwd: Path) -> None:
+        self._cwd = cwd
+
+    def run(self, *, prompt: str, kind: str, forbid_writes: bool) -> str:
+        result = run_claude(prompt, cwd=self._cwd, timeout=MUTATION_TIMEOUT_SECONDS)
+        if result.returncode != 0:
+            raise DispatchError(
+                f"mutation subagent exited {result.returncode}:\n{result.stderr[:500]}"
+            )
+        return result.stdout
+
+
 def mutate_skill(
     *,
     sut_path: Path,
@@ -199,32 +214,65 @@ def mutate_skill(
     learnings: str,
     strategy: str,
     cwd: Path,
+    recent_history: list | None = None,
+    io: object | None = None,
+    state: object | None = None,
 ) -> str:
-    """Spawn a Claude Code subagent to rewrite the SUT at `sut_path`.
+    """Spawn the Proposer then Skill-Builder subagents (paper §B.1 / §B.2).
 
-    The subagent is expected to edit `sut_path` in place (it's a file inside
-    `cwd`, which is a git worktree). We return the subagent's stdout for
-    audit logging — the actual mutation is observed by re-reading the file.
-    Raises DispatchError on subagent failure.
+    The two-step dispatch:
+      1. Proposer reads failures + history + existing skill, returns JSON
+         {action, target_skill, proposed_skill, justification}.
+      2. Skill-Builder receives the proposal and edits the SUT in place;
+         returns a single-line summary.
+
+    `io` and `state` are injection points for tests; production callers
+    pass `io=None` (real `claude` CLI) and may omit `state` if no event
+    emission is desired. Raises DispatchError on subagent failure.
+
+    `learnings` and `strategy` are retained for backward compatibility
+    with v0.3 callers; the propose step builds its own prompt from
+    `recent_history` and the failures summary derived from `tests_preview`.
     """
-    from skill_forge import prompts
+    from skill_forge import builder as _builder
+    from skill_forge import proposer as _proposer
 
-    sut_content = sut_path.read_text(encoding="utf-8")
+    sut_content = sut_path.read_text(encoding="utf-8") if sut_path.is_file() else ""
     relative_sut = sut_path.relative_to(cwd) if sut_path.is_absolute() else sut_path
 
-    prompt = prompts.build_mutation_prompt(
-        sut_relative_path=str(relative_sut),
-        sut_content=sut_content,
+    real_io = io if io is not None else _RealSubagentIO(cwd=cwd)
+
+    propose_prompt = _proposer.build_prompt(
+        sut_relative_path=relative_sut,
+        existing_skill_text=sut_content,
+        failures_summary=tests_preview or "(no failures summary supplied)",
+        recent_history=list(recent_history or []),
         tests_preview=tests_preview,
-        learnings=learnings,
-        strategy=strategy,
     )
-    result = run_claude(prompt, cwd=cwd, timeout=MUTATION_TIMEOUT_SECONDS)
-    if result.returncode != 0:
-        raise DispatchError(
-            f"mutation subagent exited {result.returncode}:\n{result.stderr[:500]}"
-        )
-    return result.stdout
+    propose_raw = real_io.run(prompt=propose_prompt, kind="propose", forbid_writes=True)
+    try:
+        proposal = _proposer.parse_response(propose_raw)
+    except (ValueError, KeyError) as e:
+        # Non-JSON or malformed Proposer response — don't crash the whole
+        # mutation. Optimize.py treats an empty mutation_summary as a
+        # "no diff produced" and discards the worker without an error.
+        # The downstream feedback_history.jsonl entry is written by the
+        # optimize loop's per-worker bookkeeping (SOUL §5: failure is
+        # memory). Sentinel string is greppable so the dashboard "Why"
+        # tab can surface it.
+        return f"(proposer JSON unparseable: {type(e).__name__}; preview={propose_raw[:120]!r})"
+
+    if state is not None:
+        state.emit("MutationProposal", proposal)
+
+    build_prompt_text = _builder.build_prompt(
+        proposal=proposal,
+        sut_relative_path=relative_sut,
+        existing_skill_text=sut_content,
+        tests_preview=tests_preview,
+    )
+    build_raw = real_io.run(prompt=build_prompt_text, kind="build", forbid_writes=False)
+    return _builder.parse_summary(build_raw)
 
 
 # --- JSON extraction ------------------------------------------------------

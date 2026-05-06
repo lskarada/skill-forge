@@ -105,6 +105,10 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
     yield _format_sse("html", env.get_template("_counts.html").render(**snap))
     yield _format_sse("html", _render_workers_oob(env, snap))
     yield _format_sse("html", env.get_template("_bracket.html").render(hx_oob=True, **snap))
+    # v0.7.1 Mission Control panels.
+    for tpl in ("_lineage.html", "_frontier.html", "_sparkline.html",
+                "_evo_tree.html", "_strategy_chips.html", "_why_rail.html"):
+        yield _format_sse("html", env.get_template(tpl).render(hx_oob=True, **snap))
     try:
         while True:
             if stop_event is not None and stop_event.is_set():
@@ -136,6 +140,13 @@ async def sse_stream(env: Environment, bus: ev.EventBus,
                     "html",
                     env.get_template("_bracket.html").render(hx_oob=True, **snap),
                 )
+                # v0.7.1 panels in heartbeat too.
+                for tpl in ("_lineage.html", "_frontier.html", "_sparkline.html",
+                            "_evo_tree.html", "_strategy_chips.html", "_why_rail.html"):
+                    yield _format_sse(
+                        "html",
+                        env.get_template(tpl).render(hx_oob=True, **snap),
+                    )
                 continue
             snap = state.snapshot()
             fragments = _fragments_for_event(env, evt, snap)
@@ -172,7 +183,8 @@ def _fragments_for_event(env: Environment, evt: object, snap: dict) -> list[str]
     out.append(env.get_template("_stats.html").render(**snap))
     out.append(env.get_template("_counts.html").render(**snap))
     kind = getattr(evt, "kind", None)
-    if kind in {"WorkerSpawned", "WorkerStatus", "WorkerTested", "WorkerMerged"}:
+    worker_kinds = {"WorkerSpawned", "WorkerStatus", "WorkerTested", "WorkerMerged"}
+    if kind in worker_kinds:
         # Re-render the whole workers tbody as one OOB swap. Cheap and
         # idempotent — handles both "first spawn → row self-creates"
         # and "later transition → row re-renders" without diverging.
@@ -180,6 +192,25 @@ def _fragments_for_event(env: Environment, evt: object, snap: dict) -> list[str]
         # Bracket re-renders on any worker-level transition so the SVG
         # nodes and edges stay in sync.
         out.append(env.get_template("_bracket.html").render(hx_oob=True, **snap))
+        # v0.7.1: strategy chips + evo-tree react to worker state changes.
+        out.append(env.get_template("_strategy_chips.html").render(hx_oob=True, **snap))
+        out.append(env.get_template("_evo_tree.html").render(hx_oob=True, **snap))
+
+    # MutationProposal lands on a worker's last_proposal — rerender why-rail.
+    if kind == "MutationProposal":
+        out.append(env.get_template("_why_rail.html").render(hx_oob=True, **snap))
+        out.append(env.get_template("_strategy_chips.html").render(hx_oob=True, **snap))
+
+    # GenerationStarted/FrontierUpdated/SparklineSample drive Mission Control.
+    if kind == "GenerationStarted":
+        out.append(env.get_template("_evo_tree.html").render(hx_oob=True, **snap))
+        out.append(env.get_template("_lineage.html").render(hx_oob=True, **snap))
+        out.append(env.get_template("_bracket.html").render(hx_oob=True, **snap))
+    if kind == "FrontierUpdated":
+        out.append(env.get_template("_frontier.html").render(hx_oob=True, **snap))
+        out.append(env.get_template("_lineage.html").render(hx_oob=True, **snap))
+    if kind == "SparklineSample":
+        out.append(env.get_template("_sparkline.html").render(hx_oob=True, **snap))
     return out
 
 

@@ -214,3 +214,55 @@ def build_mutation_prompt(
         learnings=learnings or "(none yet)",
         strategy=strategy or DEFAULT_MUTATION_STRATEGY,
     )
+
+
+PROPOSER_PROMPT_HEADER = """\
+You are an expert agent performance analyst specializing in identifying
+opportunities to enhance agent capabilities through skill additions or
+modifications. Your role is to carefully analyze agent execution traces and
+propose targeted skill improvements (Brainstorming skill changes).
+
+## Required Pre-Analysis Steps
+BEFORE proposing any skill, you MUST:
+1. Inventory existing skills in the repository.
+2. Analyze feedback history for DISCARDED proposals similar to what you're considering.
+3. Determine action: EDIT if an existing skill SHOULD have prevented this failure but didn't; CREATE otherwise.
+
+## Anti-Patterns to Avoid
+- DON'T propose a new skill if an existing one covers similar ground -> propose an EDIT instead.
+- DON'T ignore previous DISCARDED proposals -> explain how yours differs.
+- DON'T create narrow skills that only fix one specific failure -> ensure broad applicability.
+"""
+
+
+SYNTHESIS_PROMPT_HEADER = """\
+You are a regression-test synthesizer for the SkillForge harness. Given:
+  - a rough Claude Code session (turns where a skill misbehaved)
+  - the skill's current SKILL.md content
+  - the SkillForge harness DSL (the only assertions allowed)
+
+…you write ONE pytest test that fails against the unmutated skill in a
+deterministic-by-construction way (SOUL.md non-negotiable #1).
+
+## Hard constraints
+- The test file MUST import ONLY from `skill_forge.harness.v1`.
+- DO NOT `import pytest`. DO NOT `import` anything else.
+- DO NOT use `*` imports.
+- DO NOT define helper functions. Only `def test_<name>()` at module scope.
+- The test body MUST call `run_skill(skill_name, replay=<replay_path>)` once
+  to capture the model output, then call one or more harness assertions on it.
+- Every harness Call must be on the allowlist:
+    run_skill, assert_contains, assert_not_contains, assert_regex,
+    assert_json_has_field, assert_matches_schema, assert_min_sources,
+    assert_answer_matches, assert_pain_resolved
+- The test MUST fail when run against the CURRENT (unmutated) SKILL.md.
+  If the SKILL.md already produces the expected behavior, escalate the
+  assertion until it doesn't (don't ship a vacuous test).
+- One test per file. One regression contract per test.
+
+## Anti-patterns
+- DO NOT repeat the literal expected output in the SKILL.md as the assertion
+  (the skill would just echo it). Pin the *contract*, not the exemplar.
+- DO NOT write assertions on prose substrings that are likely to appear by
+  accident. Pick contracts the unmutated skill has no mechanism to satisfy.
+"""

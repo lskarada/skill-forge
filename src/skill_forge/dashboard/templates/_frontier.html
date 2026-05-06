@@ -1,0 +1,21 @@
+{# v0.7 Mission Control — top-K Pareto frontier cards.
+   One card per surviving program; arrow-link shows parent-of relation.
+#}
+<div id="frontier" class="frontier-panel"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <h4 class="frontier-head">Frontier (top-K)</h4>
+  <div class="frontier-cards">
+    {% for fe in frontier %}
+      <div class="frontier-card{% if fe.active %} frontier-active-pulse{% endif %}"
+           data-frontier-id="{{ fe.id }}"
+           data-frontier-parent="{{ fe.parent }}">
+        <div class="frontier-id">{{ fe.id }}</div>
+        <div class="frontier-score">{{ "%.3f"|format(fe.score) }}</div>
+        {% if fe.parent %}
+          <div class="frontier-parent">↑ {{ fe.parent }}</div>
+        {% endif %}
+      </div>
+    {% else %}
+      <div class="frontier-empty">frontier is empty — first generation pending</div>
+    {% endfor %}
+  </div>
+</div>

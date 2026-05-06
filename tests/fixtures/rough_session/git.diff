@@ -1,0 +1,4 @@
+--- a/src/foo.py
++++ b/src/foo.py
+--- a/src/bar.py
++++ b/src/bar.py
