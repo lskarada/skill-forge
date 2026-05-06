@@ -1,0 +1,102 @@
+{# v0.7.1 Mission Control — multi-generation lineage tree (EvoSkill §D shape).
+
+   Renders RunState.lineage_history as a vertical trunk: each merged winner
+   becomes the parent of the next round; siblings (discarded/errored) fork
+   off to the side at reduced opacity. Grows downward as more generations
+   admit candidates.
+
+   Variables expected:
+     - lineage_history: list[GenerationSnapshot]  (each w/ gen, parent, workers)
+     - current_workers: list[WorkerView]           (in-flight gen, may be empty)
+#}
+{% set width = 760 %}
+{% set side_dx = 180 %}
+{% set node_y = namespace(value=60) %}
+{% set step_y = 160 %}
+{% set total_levels = lineage_history|length + (1 if current_workers else 0) + 1 %}
+{% set svg_height = 60 + step_y * total_levels %}
+
+<div id="evo-tree" class="evo-tree-card"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <div class="evo-tree-head">
+    <h4>Lineage tree</h4>
+    <div class="evo-tree-sub">{{ lineage_history|length }} generation{{ "s" if lineage_history|length != 1 else "" }} rendered{% if current_workers %} · current round in progress{% endif %}</div>
+  </div>
+  <svg class="evo-tree-svg" viewBox="0 0 {{ width }} {{ svg_height }}" preserveAspectRatio="xMidYMid meet">
+    {% set trunk_x = width / 2 %}
+    {% set parent_label_var = namespace(value="baseline") %}
+    {% if lineage_history %}
+      {% set parent_label_var.value = lineage_history[0].parent %}
+    {% endif %}
+
+    {# Initial baseline node at the top #}
+    <g class="evo-node evo-node-baseline" transform="translate({{ trunk_x }},{{ node_y.value }})">
+      <circle r="22" />
+      <text class="evo-node-label" y="5" text-anchor="middle">{{ parent_label_var.value }}</text>
+    </g>
+
+    {% for snap in lineage_history %}
+      {% set py = node_y.value %}
+      {% set node_y.value = node_y.value + step_y %}
+      {% set cy = node_y.value %}
+      {# Identify winner of this generation: w.merged or w.status == "merged" #}
+      {% set winner = namespace(w=None) %}
+      {% for w in snap.workers %}
+        {% if (w.merged or w.status == "merged") and winner.w is none %}
+          {% set winner.w = w %}
+        {% endif %}
+      {% endfor %}
+      {% set siblings = snap.workers | rejectattr("merged") | rejectattr("status", "equalto", "merged") | list %}
+
+      {# Trunk edge (parent → winner) #}
+      {% if winner.w %}
+        <path class="evo-edge-merged" d="M{{ trunk_x }},{{ py + 22 }} C{{ trunk_x }},{{ (py + cy) / 2 }} {{ trunk_x }},{{ (py + cy) / 2 }} {{ trunk_x }},{{ cy - 22 }}" fill="none" />
+      {% endif %}
+
+      {# Sibling edges (parent → discarded/errored siblings) #}
+      {% for w in siblings %}
+        {% set sign = -1 if loop.index0 % 2 == 0 else 1 %}
+        {% set offset = ((loop.index0 // 2) + 1) * side_dx %}
+        {% set sx = trunk_x + sign * offset %}
+        {% set ec = "evo-edge-errored" if w.status == "errored" else "evo-edge-discarded" %}
+        <path class="{{ ec }}" d="M{{ trunk_x }},{{ py + 22 }} C{{ trunk_x }},{{ (py + cy) / 2 }} {{ sx }},{{ (py + cy) / 2 }} {{ sx }},{{ cy - 18 }}" fill="none" />
+      {% endfor %}
+
+      {# Winner node on the trunk #}
+      {% if winner.w %}
+        <g class="evo-node evo-node-merged" transform="translate({{ trunk_x }},{{ cy }})" data-worker-id="{{ winner.w.id }}">
+          <circle r="22" />
+          <text class="evo-node-label" y="5" text-anchor="middle">v{{ snap.gen + 1 }}</text>
+        </g>
+      {% endif %}
+
+      {# Sibling nodes off-trunk #}
+      {% for w in siblings %}
+        {% set sign = -1 if loop.index0 % 2 == 0 else 1 %}
+        {% set offset = ((loop.index0 // 2) + 1) * side_dx %}
+        {% set sx = trunk_x + sign * offset %}
+        {% set nc = "evo-node-errored" if w.status == "errored" else "evo-node-discarded" %}
+        <g class="evo-node {{ nc }}" transform="translate({{ sx }},{{ cy }})" data-worker-id="{{ w.id }}">
+          <circle r="18" />
+          <text class="evo-node-label-sm" y="34" text-anchor="middle">{{ w.strategy[:14] or w.id }}</text>
+        </g>
+      {% endfor %}
+    {% endfor %}
+
+    {# Current in-flight gen (workers active, no snapshot yet) #}
+    {% if current_workers %}
+      {% set py = node_y.value %}
+      {% set node_y.value = node_y.value + step_y %}
+      {% set cy = node_y.value %}
+      {% for w in current_workers %}
+        {% set sign = (-1 if loop.index0 == 0 else (0 if loop.index0 == 1 else 1)) %}
+        {% set sx = trunk_x + sign * side_dx %}
+        {% set status_class = "evo-node-active" if w.status in ["queued", "mutating", "testing"] else ("evo-node-merged" if w.merged or w.status == "merged" else ("evo-node-errored" if w.status == "errored" else "evo-node-discarded")) %}
+        <path class="evo-edge-active" d="M{{ trunk_x }},{{ py + 22 }} C{{ trunk_x }},{{ (py + cy) / 2 }} {{ sx }},{{ (py + cy) / 2 }} {{ sx }},{{ cy - 18 }}" fill="none" />
+        <g class="evo-node {{ status_class }}" transform="translate({{ sx }},{{ cy }})" data-worker-id="{{ w.id }}">
+          <circle r="18" />
+          <text class="evo-node-label-sm" y="34" text-anchor="middle">{{ w.strategy[:14] or w.id }}</text>
+        </g>
+      {% endfor %}
+    {% endif %}
+  </svg>
+</div>
