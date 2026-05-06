@@ -112,11 +112,22 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
   (R10).** Survives terminal close (via `start_new_session=True`) but
   not machine reboot. Cancellation: `forge retro --kill`
   (reads `.skill-forge/retro.pid`).
-- **v0.8.0 ships campaign orchestration only; real mutation wiring lands
-  in v0.8.1.** `campaign.run_campaign` calls `evolve.run_evolution` with
-  a stub `run_one_generation`; the actual `dispatch.mutate_skill` invocation
-  per worker is the v0.8.1 follow-up. Gate 4 (`bin/verify-retro-realapi`)
-  reflects that.
+- **v0.8.1 wired real mutation through evolve + retro.** The
+  `forge evolve` / `forge retro` CLI now calls
+  `evolve.build_real_run_one_generation()` which translates
+  `run_optimize` worker results into `FrontierEntry` candidates the
+  multi-gen orchestrator admits/evicts. Live dashboard consumes
+  `GenerationStarted` / `FrontierUpdated` / `SparklineSample` events
+  (emitted by `run_evolution` when `emit_dashboard_events=True`) and
+  re-renders the lineage strip, evo-tree, frontier card, sparkline,
+  strategy chips and why-rail panels via OOB swaps.
+- **`pain.ingest` defaults to a 24h recency window.** Fresh `forge
+  retro` runs don't re-read months of historical transcripts; pass
+  `since=None` to disable for fixture-driven runs.
+- **`dispatch.mutate_skill` is resilient to non-JSON Proposer output.**
+  A malformed propose response returns a sentinel summary
+  ("(proposer JSON unparseable: ...)") and the worker is treated as
+  no_change; no crash, no swallowed failure (SOUL §5).
 
 ## Demo fixture is load-bearing
 
