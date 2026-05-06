@@ -128,6 +128,16 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
   A malformed propose response returns a sentinel summary
   ("(proposer JSON unparseable: ...)") and the worker is treated as
   no_change; no crash, no swallowed failure (SOUL §5).
+- **v0.8.2 wired the Synthesis subagent.** `forge retro` now drives the
+  full north-star user journey:
+    pain.ingest → attribution.attribute → synthesis.synthesize_test
+    (writes test_<ts>.py + replays/<ts>.json under
+    `.skill-forge/tests/<skill>/`, gated by AST validator + 5x red
+    baseline) → campaign.run_campaign (parallel mutation tournaments)
+    → Portfolio (merged updates with evidence files).
+  Rejected synthesized tests land in
+  `.skill-forge/synthesis_rejects/<skill>/` with a sibling .why.md
+  per SOUL §5.
 
 ## Demo fixture is load-bearing
 

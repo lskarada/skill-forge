@@ -461,12 +461,47 @@ def retro(
                 inventory.add(child.name)
 
     from skill_forge import evolve as _evolve_mod
+    from skill_forge import synthesis as _synthesis_mod
+    from skill_forge.dispatch import _RealSubagentIO
+
+    output_root_path = Path.cwd() / ".skill-forge"
+
     real_one_gen = _evolve_mod.build_real_run_one_generation(
-        output_root=Path.cwd() / ".skill-forge",
+        output_root=output_root_path,
         repo_path=Path.cwd(),
         assume_yes=True,
         printer=typer.echo,
     )
+
+    # v0.8.2: real Synthesis subagent. The Synthesizer dispatches Claude
+    # Code via _RealSubagentIO; each admitted test passes through the
+    # AST validator + N-red baseline gate.
+    synth_io = _RealSubagentIO(cwd=Path.cwd())
+
+    def _skill_loader(skill_name: str) -> str:
+        sut = Path.cwd() / ".claude" / "skills" / skill_name / "SKILL.md"
+        if sut.is_file():
+            return sut.read_text(encoding="utf-8")
+        return f"# (no SKILL.md found at {sut})"
+
+    def _real_synthesize(skill_name: str, attr) -> object | None:
+        runner = _synthesis_mod.make_real_baseline_runner(
+            repo_path=Path.cwd(), skill=skill_name,
+        )
+        # Pull the matching attribution from the captured outer scope —
+        # campaign passes (skill, attr) so we trust attr here.
+        from skill_forge.pain import ingest as _ingest
+        pain_obj = _ingest(
+            transcripts_dir=pain_from, git_diff_path=None, since=None,
+        )
+        result = _synthesis_mod.synthesize_test(
+            pain=pain_obj, attribution=attr, io=synth_io,
+            output_root=output_root_path,
+            skill_loader=_skill_loader,
+            baseline_runner=runner,
+            n_runs=baseline_runs,
+        )
+        return result.admitted_path
 
     portfolio = retro_mod.run(
         transcripts_dir=pain_from,
@@ -478,6 +513,7 @@ def retro(
         patience=2,
         min_confidence=min_confidence,
         run_one_generation=real_one_gen,
+        synthesize_test=_real_synthesize,
     )
     for entry in portfolio.entries:
         prefix = "✓" if entry.accepted else "✗"
