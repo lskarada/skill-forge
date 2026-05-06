@@ -93,6 +93,9 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **`evolve.run_evolution` composes `optimize.run_optimize` via a kwarg.**
   Direct edits to `optimize.py` outside lines 205–216 / 685–696 stay
   forbidden.
+- **`forge transfer` is a primitive, not a workflow.** Use it to copy
+  a skill into a sibling slot for evaluation; the *workflow* that
+  composes transfer with retro lives in v0.8.
 
 ## Demo fixture is load-bearing
 
