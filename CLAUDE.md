@@ -80,6 +80,12 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **No direct Anthropic API calls.** All mutation happens through
   Claude Code subagents (`/forge:optimize`) so the user pays what they
   were going to pay anyway.
+- **Mutation runs as Proposer → Builder, two subagents.** Splitting them
+  was the difference between 14 "no diff" rounds and a one-shot win on
+  greeter. Don't fuse them back into one prompt.
+- **`feedback_history.jsonl` is the source of truth for prior iterations.**
+  `learnings.md` is a one-way projection for the dashboard. Mutators read
+  the JSONL via `feedback_history.read_recent()`, never the .md.
 
 ## Demo fixture is load-bearing
 
