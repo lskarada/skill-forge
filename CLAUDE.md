@@ -86,6 +86,13 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **`feedback_history.jsonl` is the source of truth for prior iterations.**
   `learnings.md` is a one-way projection for the dashboard. Mutators read
   the JSONL via `feedback_history.read_recent()`, never the .md.
+- **Frontier is git-tag-backed (`frontier/<skill>/g<N>-w<W>`).** Programs
+  round-trip through `program.yaml`; do not store frontier state in JSON
+  or sqlite — git is the source of truth so a fresh clone observes the
+  full history.
+- **`evolve.run_evolution` composes `optimize.run_optimize` via a kwarg.**
+  Direct edits to `optimize.py` outside lines 205–216 / 685–696 stay
+  forbidden.
 
 ## Demo fixture is load-bearing
 
