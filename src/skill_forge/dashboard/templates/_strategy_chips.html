@@ -1,0 +1,12 @@
+{# v0.7 Mission Control — one-word strategy chip per worker.
+   Sources its label from the Proposer's `proposed_skill` field
+   (RunState.workers[wid].last_proposal["proposed_skill"]; first word).
+#}
+<div id="strategy-chips" class="strategy-chips"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  {% for w in workers %}
+    {% set lp = w.last_proposal %}
+    {% set chip = (lp.proposed_skill.split()|first if lp and lp.proposed_skill else "") %}
+    <span class="strategy-chip{% if not chip %} strategy-chip-empty{% endif %}"
+          data-worker-id="{{ w.id }}">{{ chip or "—" }}</span>
+  {% endfor %}
+</div>

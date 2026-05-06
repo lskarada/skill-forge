@@ -1,0 +1,30 @@
+{# v0.7 Mission Control — score-over-time sparkline (inline SVG, no chart lib).
+   `sparkline` is a list of SparklinePoint(t, score). t is the iteration index.
+#}
+{% set width = 240 %}
+{% set height = 48 %}
+{% set padding = 4 %}
+{% set inner_w = width - 2 * padding %}
+{% set inner_h = height - 2 * padding %}
+{% set n = sparkline|length %}
+<div id="sparkline" class="sparkline-card"{% if hx_oob %} hx-swap-oob="true"{% endif %}>
+  <h4 class="sparkline-head">Score over time</h4>
+  {% if n >= 2 %}
+    {% set step = inner_w / (n - 1) %}
+    <svg class="sparkline-svg" viewBox="0 0 {{ width }} {{ height }}" preserveAspectRatio="xMidYMid meet">
+      <polyline class="sparkline-line"
+                fill="none"
+                points="{% for p in sparkline %}{{ padding + loop.index0 * step }},{{ padding + inner_h * (1 - p.score) }} {% endfor %}" />
+      {% for p in sparkline %}
+        <circle class="sparkline-point"
+                cx="{{ padding + loop.index0 * step }}"
+                cy="{{ padding + inner_h * (1 - p.score) }}"
+                r="2"
+                data-spark-t="{{ p.t }}"
+                data-spark-score="{{ "%.3f"|format(p.score) }}" />
+      {% endfor %}
+    </svg>
+  {% else %}
+    <div class="sparkline-empty">sparkline needs 2+ generations</div>
+  {% endif %}
+</div>
