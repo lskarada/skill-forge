@@ -99,6 +99,24 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **Mission Control fragments (`_lineage.html`, `_frontier.html`,
   `_sparkline.html`) are reused by v0.8's `_campaign.html` as a grid
   of mini-Mission-Controls.** Do not branch the templates per surface.
+- **`forge retro` is the product surface.** v0.4–v0.7 are substrate.
+  When evaluating new feature proposals, ask "does this move us toward
+  retro evolution, or sideways?" — sideways is suspect.
+- **Synthesized tests must pass the N-red baseline gate (SOUL §1; default
+  N=5).** Failing tests are written to `.skill-forge/synthesis_rejects/`,
+  surfaced in the campaign dashboard pane, never silently dropped.
+- **Pain heuristic is English-only (S12).** Non-English complaint
+  phrasing falls through to error-signature attribution only.
+  Multilingual ingestion is a v0.9 candidate.
+- **`forge retro --background` is a detached subprocess, not a daemon
+  (R10).** Survives terminal close (via `start_new_session=True`) but
+  not machine reboot. Cancellation: `forge retro --kill`
+  (reads `.skill-forge/retro.pid`).
+- **v0.8.0 ships campaign orchestration only; real mutation wiring lands
+  in v0.8.1.** `campaign.run_campaign` calls `evolve.run_evolution` with
+  a stub `run_one_generation`; the actual `dispatch.mutate_skill` invocation
+  per worker is the v0.8.1 follow-up. Gate 4 (`bin/verify-retro-realapi`)
+  reflects that.
 
 ## Demo fixture is load-bearing
 
