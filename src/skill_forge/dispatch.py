@@ -250,7 +250,17 @@ def mutate_skill(
         tests_preview=tests_preview,
     )
     propose_raw = real_io.run(prompt=propose_prompt, kind="propose", forbid_writes=True)
-    proposal = _proposer.parse_response(propose_raw)
+    try:
+        proposal = _proposer.parse_response(propose_raw)
+    except (ValueError, KeyError) as e:
+        # Non-JSON or malformed Proposer response — don't crash the whole
+        # mutation. Optimize.py treats an empty mutation_summary as a
+        # "no diff produced" and discards the worker without an error.
+        # The downstream feedback_history.jsonl entry is written by the
+        # optimize loop's per-worker bookkeeping (SOUL §5: failure is
+        # memory). Sentinel string is greppable so the dashboard "Why"
+        # tab can surface it.
+        return f"(proposer JSON unparseable: {type(e).__name__}; preview={propose_raw[:120]!r})"
 
     if state is not None:
         state.emit("MutationProposal", proposal)
