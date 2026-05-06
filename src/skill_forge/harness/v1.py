@@ -176,6 +176,57 @@ def assert_min_sources(output: str, n: int) -> None:
         )
 
 
+def assert_answer_matches(
+    output: str,
+    ground_truth: str,
+    *,
+    tau: float = 0.0,
+    threshold: float = 0.8,
+) -> None:
+    """v0.6: assert that `output` answers correctly per paper §C scoring.
+
+    `tau` selects the strictest tolerance considered: tau=0.0 requires an
+    exact numeric match; tau=0.05 allows up to 5% relative drift. The
+    multi-tolerance weighted score must meet `threshold` (default 0.8,
+    paper §C failure-flagging threshold) for the assertion to pass.
+
+    Used by v0.8 retro synthesis tests and by v0.6 transfer harness checks.
+    """
+    from skill_forge import scoring
+
+    pred_nums = scoring.extract_numbers(output)
+    gt_nums = scoring.extract_numbers(ground_truth)
+
+    if gt_nums:
+        # Numeric path. When an explicit `tau > 0` is passed the caller is
+        # signalling "drift up to tau is acceptable" — in that mode we gate
+        # only on the strict-tau check (the weighted score, which mixes
+        # several tolerances, can dip below threshold even when the answer
+        # is squarely inside the requested tau).
+        # When tau == 0 (default), gate on BOTH strict equality AND the
+        # paper §C weighted threshold so a numerically-close-but-not-equal
+        # answer still fails the strict pass.
+        pred_at_tau = any(
+            scoring.fuzzy_match_at_tau(predicted=p, ground_truth=gt_nums[0], tau=tau)
+            for p in pred_nums
+        )
+        score = scoring.score_answer(predicted=output, ground_truth=ground_truth)
+        gates_failed = (not pred_at_tau) or (tau == 0.0 and score < threshold)
+        if gates_failed:
+            raise AssertionError(
+                f"answer mismatch: predicted nums={pred_nums[:5]} vs gt={gt_nums[:1]}; "
+                f"score={score:.3f} threshold={threshold:.3f} tau={tau}"
+            )
+    else:
+        score = scoring.score_answer(predicted=output, ground_truth=ground_truth)
+        if score < threshold:
+            raise AssertionError(
+                f"answer mismatch (textual): expected {ground_truth!r} in output; "
+                f"score={score:.3f} threshold={threshold:.3f}; "
+                f"got (first 200 chars): {output[:200]!r}"
+            )
+
+
 __all__ = [
     "run_skill",
     "assert_contains",
@@ -184,4 +235,5 @@ __all__ = [
     "assert_json_has_field",
     "assert_matches_schema",
     "assert_min_sources",
+    "assert_answer_matches",
 ]
