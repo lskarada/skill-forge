@@ -9,7 +9,9 @@ from __future__ import annotations
 
 import json
 import re
+import time
 from dataclasses import dataclass
+from datetime import timedelta
 from pathlib import Path
 
 
@@ -38,9 +40,30 @@ _COMPLAINT_PREFIXES = (
 )
 
 
-def ingest(*, transcripts_dir: Path, git_diff_path: Path | None) -> PainSession:
+DEFAULT_RECENCY = timedelta(hours=24)
+
+
+def ingest(
+    *,
+    transcripts_dir: Path,
+    git_diff_path: Path | None,
+    since: timedelta | None = DEFAULT_RECENCY,
+) -> PainSession:
+    """Ingest transcripts modified within `since` of now.
+
+    `since=None` disables the recency filter (read everything). The
+    default of 24 hours stops a fresh `forge retro` from re-reading
+    months of historical transcripts on a long-lived project — the
+    user's "rough session" is almost always within the last day.
+    """
     turns: list[Turn] = []
-    for jsonl in sorted(transcripts_dir.glob("*.jsonl")):
+    cutoff = (time.time() - since.total_seconds()) if since is not None else None
+
+    files = sorted(transcripts_dir.glob("*.jsonl"))
+    if cutoff is not None:
+        files = [p for p in files if p.stat().st_mtime >= cutoff]
+
+    for jsonl in files:
         for line in jsonl.read_text(encoding="utf-8").splitlines():
             if not line.strip():
                 continue

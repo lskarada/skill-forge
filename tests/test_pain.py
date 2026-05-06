@@ -16,7 +16,9 @@ FIXTURE = Path(__file__).parent / "fixtures" / "rough_session"
 
 
 def test_ingest_combines_transcripts_and_git() -> None:
-    pain = ingest(transcripts_dir=FIXTURE, git_diff_path=FIXTURE / "git.diff")
+    # since=None to make this test independent of fixture file mtime
+    # (default recency is 24h; fixtures don't update).
+    pain = ingest(transcripts_dir=FIXTURE, git_diff_path=FIXTURE / "git.diff", since=None)
 
     assert isinstance(pain, PainSession)
     assert len(pain.turns) == 5  # 3 + 2

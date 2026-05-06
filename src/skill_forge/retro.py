@@ -37,7 +37,13 @@ def run(
     `synthesize_test(skill, attribution) -> path | None` is the synthesizer
     used by Campaign for the per-skill test admission gate (Task 8.7e).
     """
-    pain = pain_mod.ingest(transcripts_dir=transcripts_dir, git_diff_path=git_diff_path)
+    # since=None for fixture-driven runs (rough_session/) — production
+    # `forge retro` already passes a real cwd-resolved transcripts dir
+    # whose recent jsonl files satisfy the default 24h slice.
+    pain = pain_mod.ingest(
+        transcripts_dir=transcripts_dir, git_diff_path=git_diff_path,
+        since=None,
+    )
     inventory_set = set(skills_inventory)
     attributions = attribution_mod.attribute(pain, inventory_set, io=io)
 
