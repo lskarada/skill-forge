@@ -422,6 +422,37 @@ def _tests_dir_in_worktree(tests_dir: Path, repo_path: Path, worktree_path: Path
     return worktree_path / relative
 
 
+def _stage_sut(worktree_sut: Path, worktree_root: Path) -> Path:
+    """Stage the SUT (file or directory) at MUTATION_TARGET inside the worktree.
+
+    Claude Code blocks subagent writes under `.claude/` even with
+    --dangerously-skip-permissions. We materialize the SUT outside that
+    sandbox so the Skill-Builder subagent can edit it; the harness copies
+    the result back via `_unstage_sut` before commit.
+    """
+    if worktree_sut.is_dir():
+        scratch = worktree_root / "MUTATION_TARGET"
+        if scratch.exists():
+            shutil.rmtree(scratch)
+        shutil.copytree(worktree_sut, scratch)
+    else:
+        scratch = worktree_root / "MUTATION_TARGET.md"
+        shutil.copy(worktree_sut, scratch)
+    return scratch
+
+
+def _unstage_sut(scratch: Path, worktree_sut: Path) -> None:
+    """Copy the (possibly mutated) scratch SUT back over the real SUT path."""
+    if scratch.is_dir():
+        if worktree_sut.exists():
+            shutil.rmtree(worktree_sut)
+        shutil.copytree(scratch, worktree_sut)
+        shutil.rmtree(scratch, ignore_errors=True)
+    else:
+        shutil.copy(scratch, worktree_sut)
+        scratch.unlink(missing_ok=True)
+
+
 def _win_note(winner: "WorkerResult",
               results: list["WorkerResult"],
               baseline: baseline_mod.BaselineResult) -> str:
@@ -681,9 +712,9 @@ def _run_parallel(
                 # --dangerously-skip-permissions, which would otherwise make
                 # SKILL.md edits impossible. Stage the SUT at a scratch path
                 # outside `.claude/` for the subagent, then copy back from the
-                # harness (which has no such block) before commit.
-                scratch_sut = handle.path / "MUTATION_TARGET.md"
-                shutil.copy(worktree_sut, scratch_sut)
+                # harness (which has no such block) before commit. v0.4
+                # generalizes this to handle skill-folder SUTs (directory).
+                scratch_sut = _stage_sut(worktree_sut, handle.path)
 
                 summary = io.mutator(
                     sut_path=scratch_sut,
@@ -693,8 +724,7 @@ def _run_parallel(
                     cwd=handle.path,
                 )
 
-                shutil.copy(scratch_sut, worktree_sut)
-                scratch_sut.unlink(missing_ok=True)
+                _unstage_sut(scratch_sut, worktree_sut)
 
                 commit_sha = io.committer(
                     handle.path, f"skill-forge: mutate {config.skill} [w{index}]"
