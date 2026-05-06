@@ -928,7 +928,7 @@ def _locked_worktree(
     io: OptimizeIO,
     repo_path: Path,
     branch: str,
-    lock: threading.Lock,
+    lock: threading.Lock | None = None,
 ) -> Iterator[wt_mod.WorktreeHandle]:
     """Serialize only the git-level enter/exit of `create_worktree`.
 
@@ -938,12 +938,13 @@ def _locked_worktree(
     subagent edits inside a worktree never touch main's .git.
     """
     cm = io.worktree_factory(repo_path, branch, base_ref="HEAD")
-    with lock:
+    effective_lock = lock if lock is not None else threading.Lock()
+    with effective_lock:
         handle = cm.__enter__()
     try:
         yield handle
     finally:
-        with lock:
+        with effective_lock:
             cm.__exit__(None, None, None)
 
 
