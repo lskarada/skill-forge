@@ -323,6 +323,59 @@ def improve(
 
 
 @app.command()
+def evolve(
+    skill: str = typer.Argument(
+        ...,
+        help="Skill name (looked up in .claude/skills/<skill>/SKILL.md).",
+    ),
+    generations: int = typer.Option(
+        3, "--generations", "-g", min=1, max=20,
+        help="Number of evolution generations (default: 3).",
+    ),
+    frontier_size: int = typer.Option(
+        3, "--frontier-size", min=1, max=10,
+        help="Top-K Pareto frontier size (default: 3, paper §D).",
+    ),
+    workers: int = typer.Option(
+        3, "--workers", "-w", min=1, max=16,
+        help="Mutation workers per generation (default: 3).",
+    ),
+    patience: int = typer.Option(
+        2, "--patience", min=1, max=10,
+        help="Stop after this many stagnant generations (default: 2).",
+    ),
+) -> None:
+    """v0.5: Run a multi-generation Pareto-frontier evolution against `skill`.
+
+    Wraps the v0.4 single-gen mutation loop. Frontier is persisted as
+    git tags `frontier/<skill>/g<N>-w<W>` (see git_tags.py); each entry
+    has a sibling program.yaml. Use `git tag -l 'frontier/<skill>/*'`
+    after the run to inspect surviving programs.
+    """
+    from skill_forge import evolve as evolve_mod
+
+    def _no_op_one_gen(*, skill, gen_index, parent, k, workers_per_gen, repo_lock):
+        # v0.5 default: real mutation dispatch lands when the optimize.py
+        # extraction is wired (Task 5.7 staging tier). For now the CLI is
+        # exercisable end-to-end with stubbed dispatch via monkeypatch.
+        return []
+
+    result = evolve_mod.run_evolution(
+        skill=skill,
+        generations=generations,
+        frontier_size=frontier_size,
+        workers_per_gen=workers,
+        patience=patience,
+        run_one_generation=_no_op_one_gen,
+    )
+    typer.echo(
+        f"evolve: gens={result.generations_run} "
+        f"early_stopped={result.early_stopped} "
+        f"winner={result.winner.id if result.winner else None}"
+    )
+
+
+@app.command()
 def status(
     skill: str | None = typer.Option(
         None,
