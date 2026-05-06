@@ -227,6 +227,22 @@ def assert_answer_matches(
             )
 
 
+def assert_pain_resolved(output: str, pain_signature: str) -> None:
+    """v0.8: assert that the original pain signature no longer appears in `output`.
+
+    Used by retro-flow synthesized tests: after the mutation lands, the
+    failing phrase (e.g. "TypeError on parse" from the source transcript)
+    must not recur in the post-mutation output. Pure substring check —
+    case-sensitive — to keep determinism intact.
+    """
+    if pain_signature in output:
+        idx = output.find(pain_signature)
+        window = output[max(0, idx - 60) : idx + len(pain_signature) + 60]
+        raise AssertionError(
+            f"pain signature {pain_signature!r} present at offset {idx}: …{window!r}…"
+        )
+
+
 __all__ = [
     "run_skill",
     "assert_contains",
@@ -236,4 +252,5 @@ __all__ = [
     "assert_matches_schema",
     "assert_min_sources",
     "assert_answer_matches",
+    "assert_pain_resolved",
 ]
