@@ -96,6 +96,9 @@ Three pytest tiers, each gated by a marker excluded from the default `pytest tes
 - **`forge transfer` is a primitive, not a workflow.** Use it to copy
   a skill into a sibling slot for evaluation; the *workflow* that
   composes transfer with retro lives in v0.8.
+- **Mission Control fragments (`_lineage.html`, `_frontier.html`,
+  `_sparkline.html`) are reused by v0.8's `_campaign.html` as a grid
+  of mini-Mission-Controls.** Do not branch the templates per surface.
 
 ## Demo fixture is load-bearing
 
