@@ -32,8 +32,10 @@ def test_normalization_sums_to_one() -> None:
     total = sum(weights.values())
     normalized = {tau: w / total for tau, w in weights.items()}
     assert math.isclose(sum(normalized.values()), 1.0, rel_tol=1e-9)
-    # Strictest tolerance gets > 30% of weight.
-    assert normalized[0.0] > 0.30
+    # Strictest tolerance gets ≈30% of weight (= 1 / 3.333... = 0.300).
+    # That's "dominant share among 5 tolerances" — no other tau exceeds it.
+    assert normalized[0.0] >= 0.29
+    assert all(normalized[0.0] >= normalized[t] for t in TAU_GRID)
 
 
 def test_strict_tolerance_dominates() -> None:
