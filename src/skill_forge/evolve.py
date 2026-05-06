@@ -52,6 +52,7 @@ def run_evolution(
     run_one_generation: GenerationFn,
     bus: object | None = None,
     repo_lock: object | None = None,
+    emit_dashboard_events: bool = False,
 ) -> EvolutionResult:
     """Run up to `generations` rounds of mutation against `skill`.
 
@@ -66,13 +67,22 @@ def run_evolution(
     early_stopped = False
     gens_run = 0
 
+    # Lazy import so non-dashboard callers (unit tests) don't need ui extras.
+    if emit_dashboard_events:
+        from skill_forge.dashboard import events as _dash_ev
+
     for gen_index in range(generations):
         parent = (
             _frontier.parent_for_iter(frontier, gen_index)
             if frontier
             else FrontierEntry(id="baseline", score=0.0, skill_len=0)
         )
-        _emit(bus, "GenerationStarted", {"gen": gen_index, "parent": parent.id})
+        parent_label = parent.id if gen_index > 0 else "baseline"
+        _emit(bus, "GenerationStarted", {"gen": gen_index, "parent": parent_label})
+        if emit_dashboard_events:
+            _dash_ev.emit_event(_dash_ev.GenerationStarted(
+                gen=gen_index, parent=parent_label,
+            ))
 
         candidates = list(run_one_generation(
             skill=skill,
@@ -95,6 +105,16 @@ def run_evolution(
                 "gen": gen_index, "admitted": cand.id,
                 "evicted": evicted.id if evicted else None,
             })
+            if emit_dashboard_events:
+                _dash_ev.emit_event(_dash_ev.FrontierUpdated(
+                    gen=gen_index, admitted_id=cand.id,
+                    admitted_score=cand.score,
+                    evicted_id=evicted.id if evicted else None,
+                ))
+        if emit_dashboard_events:
+            _dash_ev.emit_event(_dash_ev.SparklineSample(
+                t=gen_index, score=gen_best_score,
+            ))
 
         _emit(bus, "GenerationFinished", {"gen": gen_index, "best": gen_best_score})
         gens_run = gen_index + 1

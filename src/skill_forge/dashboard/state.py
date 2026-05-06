@@ -260,6 +260,10 @@ class RunState:
             )
             now = time.monotonic()
             workers = [_worker_view_for_render(w, now) for w in _sorted_workers(self.workers)]
+            # v0.7.1 Mission Control fields. Templates render gracefully
+            # on empty state (lineage strip shows "no generations yet",
+            # frontier shows "frontier is empty", etc).
+            current_workers = list(self.workers.values())
             return {
                 "skill": self.skill or "skill",
                 "run_id": self.run_id or "—",
@@ -271,6 +275,12 @@ class RunState:
                 "counts": counts,
                 "workers": workers,
                 "parent_label": self.parent_label,
+                # v0.7.1
+                "generations": list(self.generations),
+                "frontier": list(self.frontier),
+                "sparkline": list(self.sparkline),
+                "lineage_history": list(self.lineage_history),
+                "current_workers": current_workers,
             }
 
     def _elapsed_secs_locked(self) -> int:

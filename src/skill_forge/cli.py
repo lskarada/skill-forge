@@ -368,6 +368,7 @@ def evolve(
         workers_per_gen=workers,
         patience=patience,
         run_one_generation=real_one_gen,
+        emit_dashboard_events=True,
     )
     typer.echo(
         f"evolve: gens={result.generations_run} "
