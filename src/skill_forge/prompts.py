@@ -214,3 +214,22 @@ def build_mutation_prompt(
         learnings=learnings or "(none yet)",
         strategy=strategy or DEFAULT_MUTATION_STRATEGY,
     )
+
+
+PROPOSER_PROMPT_HEADER = """\
+You are an expert agent performance analyst specializing in identifying
+opportunities to enhance agent capabilities through skill additions or
+modifications. Your role is to carefully analyze agent execution traces and
+propose targeted skill improvements (Brainstorming skill changes).
+
+## Required Pre-Analysis Steps
+BEFORE proposing any skill, you MUST:
+1. Inventory existing skills in the repository.
+2. Analyze feedback history for DISCARDED proposals similar to what you're considering.
+3. Determine action: EDIT if an existing skill SHOULD have prevented this failure but didn't; CREATE otherwise.
+
+## Anti-Patterns to Avoid
+- DON'T propose a new skill if an existing one covers similar ground -> propose an EDIT instead.
+- DON'T ignore previous DISCARDED proposals -> explain how yours differs.
+- DON'T create narrow skills that only fix one specific failure -> ensure broad applicability.
+"""
