@@ -29,6 +29,7 @@ def run(
     min_confidence: str = "low",
     io: object | None = None,
     synthesize_test=None,
+    run_one_generation=None,
 ) -> campaign_mod.Portfolio:
     """Run the full retro flow against `transcripts_dir`. Returns a Portfolio.
 
@@ -48,5 +49,6 @@ def run(
         patience=patience,
         min_confidence=min_confidence,
         synthesize_test=synthesize_test,
+        run_one_generation=run_one_generation,
     )
     return portfolio

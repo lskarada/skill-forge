@@ -354,11 +354,12 @@ def evolve(
     """
     from skill_forge import evolve as evolve_mod
 
-    def _no_op_one_gen(*, skill, gen_index, parent, k, workers_per_gen, repo_lock):
-        # v0.5 default: real mutation dispatch lands when the optimize.py
-        # extraction is wired (Task 5.7 staging tier). For now the CLI is
-        # exercisable end-to-end with stubbed dispatch via monkeypatch.
-        return []
+    real_one_gen = evolve_mod.build_real_run_one_generation(
+        output_root=Path.cwd() / ".skill-forge",
+        repo_path=Path.cwd(),
+        assume_yes=True,
+        printer=typer.echo,
+    )
 
     result = evolve_mod.run_evolution(
         skill=skill,
@@ -366,7 +367,7 @@ def evolve(
         frontier_size=frontier_size,
         workers_per_gen=workers,
         patience=patience,
-        run_one_generation=_no_op_one_gen,
+        run_one_generation=real_one_gen,
     )
     typer.echo(
         f"evolve: gens={result.generations_run} "
@@ -458,6 +459,14 @@ def retro(
             if child.is_dir() and (child / "SKILL.md").is_file():
                 inventory.add(child.name)
 
+    from skill_forge import evolve as _evolve_mod
+    real_one_gen = _evolve_mod.build_real_run_one_generation(
+        output_root=Path.cwd() / ".skill-forge",
+        repo_path=Path.cwd(),
+        assume_yes=True,
+        printer=typer.echo,
+    )
+
     portfolio = retro_mod.run(
         transcripts_dir=pain_from,
         git_diff_path=None,
@@ -467,6 +476,7 @@ def retro(
         workers_per_skill=workers_per_skill,
         patience=2,
         min_confidence=min_confidence,
+        run_one_generation=real_one_gen,
     )
     for entry in portfolio.entries:
         prefix = "✓" if entry.accepted else "✗"

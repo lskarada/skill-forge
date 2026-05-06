@@ -55,6 +55,7 @@ def run_campaign(
     patience: int,
     min_confidence: str = "low",
     synthesize_test: Callable[[str, SkillAttribution], object | None] | None = None,
+    run_one_generation: Callable[..., Iterable[object]] | None = None,
 ) -> Portfolio:
     """Run M skill-evolutions concurrently. Returns Portfolio of results."""
     attrs = _filter_by_confidence(attributions, min_confidence)
@@ -89,7 +90,7 @@ def run_campaign(
             frontier_size=frontier_size,
             workers_per_gen=workers_per_skill,
             patience=patience,
-            run_one_generation=lambda **_kw: [],
+            run_one_generation=(run_one_generation or (lambda **_kw: [])),
             repo_lock=repo_lock,
         )
         score = result.winner.score if result.winner else 0.0

@@ -15,6 +15,7 @@ Composition:
 from __future__ import annotations
 
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Iterable, Optional
 
 from skill_forge import frontier as _frontier
@@ -115,3 +116,75 @@ def run_evolution(
         generations_run=gens_run,
         early_stopped=early_stopped,
     )
+
+
+# --- v0.8.1: real run_one_generation wired to optimize.run_optimize ------
+
+
+def build_real_run_one_generation(
+    *,
+    output_root: Path,
+    repo_path: Path,
+    tests_dir: Path | None = None,
+    assume_yes: bool = True,
+    printer: Callable[[str], None] | None = None,
+) -> GenerationFn:
+    """Return a `run_one_generation` callable that drives a real mutation
+    round via `optimize.run_optimize`.
+
+    Translates `OptimizeResult.worker_results` into `FrontierEntry`s the
+    multi-gen orchestrator can admit. Score is `passed / total` from the
+    post-mutation pytest run (paper §C weighted score is approximated as
+    a single-tau pass rate until a multi-tolerance test runner lands).
+    """
+    from skill_forge.optimize import (
+        OptimizeConfig,
+        OptimizeIO,
+        run_optimize,
+    )
+    import typer
+
+    _printer = printer or (lambda msg: typer.echo(msg))
+
+    def _real_one_gen(
+        *, skill: str, gen_index: int, parent, k: int,
+        workers_per_gen: int, repo_lock,
+    ) -> Iterable[FrontierEntry]:
+        config = OptimizeConfig(
+            skill=skill,
+            repo_path=repo_path,
+            output_root=output_root,
+            tests_dir=tests_dir,
+            assume_yes=assume_yes,
+            num_workers=workers_per_gen,
+        )
+        io = OptimizeIO(
+            printer=_printer,
+            prompter=lambda _msg: "y",
+        )
+        result = run_optimize(config, io)
+
+        entries: list[FrontierEntry] = []
+        for wr in result.worker_results:
+            if wr.post is None:
+                continue
+            total = wr.post.total or 1
+            score = wr.post.passed / total
+            entries.append(FrontierEntry(
+                id=f"g{gen_index}-w{wr.index}",
+                score=score,
+                skill_len=wr.mutated_sut_length or 0,
+            ))
+        # Single-worker fallback when result.worker_results is empty (N=1 path
+        # uses post_mutation directly).
+        if not entries and result.post_mutation is not None:
+            total = result.post_mutation.total or 1
+            score = result.post_mutation.passed / total
+            entries.append(FrontierEntry(
+                id=f"g{gen_index}-w0",
+                score=score,
+                skill_len=0,
+            ))
+        return entries
+
+    return _real_one_gen
