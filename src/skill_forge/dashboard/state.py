@@ -33,6 +33,32 @@ class TestCounts:
     errors: int
 
 
+# v0.7 Mission Control state types -----------------------------------------
+
+@dataclass
+class LineageView:
+    """One node in the top-bar lineage strip (baseline → v1 → v2 → ...)."""
+    label: str
+    score: float
+    parent: str = ""
+
+
+@dataclass
+class FrontierEntryView:
+    """One card in the top-K frontier panel."""
+    id: str
+    score: float
+    parent: str = ""
+    active: bool = False  # most recent admit pulse
+
+
+@dataclass
+class SparklinePoint:
+    """One score-over-time data point per frontier program."""
+    t: int
+    score: float
+
+
 @dataclass
 class WorkerView:
     id: str  # "w0", "w1", ...
@@ -77,6 +103,10 @@ class RunState:
         self.merged_count: int = 0
         # Phase C: bracket parent label, e.g. "baseline" or "v2".
         self.parent_label: str = "baseline"
+        # v0.7 Mission Control fields (consumed by _lineage / _frontier / _sparkline).
+        self.generations: list[LineageView] = []
+        self.frontier: list[FrontierEntryView] = []
+        self.sparkline: list[SparklinePoint] = []
 
     # ---- event ingest ------------------------------------------------
 
