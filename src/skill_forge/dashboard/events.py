@@ -93,6 +93,37 @@ class RunFinished:
 
 
 @dataclass(frozen=True)
+class GenerationStarted:
+    """v0.7.1: emitted at the START of each evolution generation.
+
+    The state handler snapshots current workers into RunState.lineage_history
+    and clears the workers slot for the new generation. The bracket template
+    can then render either the current gen alone or a multi-gen tree.
+    """
+    gen: int
+    parent: str
+    kind: str = "GenerationStarted"
+
+
+@dataclass(frozen=True)
+class FrontierUpdated:
+    """v0.7.1: emitted whenever frontier.admit lands a new candidate."""
+    gen: int
+    admitted_id: str
+    admitted_score: float
+    evicted_id: str | None = None
+    kind: str = "FrontierUpdated"
+
+
+@dataclass(frozen=True)
+class SparklineSample:
+    """v0.7.1: per-iteration score sample for the sparkline strip."""
+    t: int
+    score: float
+    kind: str = "SparklineSample"
+
+
+@dataclass(frozen=True)
 class MutationProposal:
     """Emitted by dispatch.mutate_skill after the Proposer subagent returns
     its JSON proposal, before the Skill-Builder edits the SUT.

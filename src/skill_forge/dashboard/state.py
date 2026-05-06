@@ -36,6 +36,18 @@ class TestCounts:
 # v0.7 Mission Control state types -----------------------------------------
 
 @dataclass
+class GenerationSnapshot:
+    """One generation worth of bracket data preserved across rounds.
+
+    Used by the multi-gen tree renderer (`_evo_tree.html`) to show the
+    surviving trunk + discard branches at every level.
+    """
+    gen: int
+    parent: str
+    workers: list["WorkerView"]   # snapshot at GenerationStarted boundary
+
+
+@dataclass
 class LineageView:
     """One node in the top-bar lineage strip (baseline → v1 → v2 → ...)."""
     label: str
@@ -107,6 +119,11 @@ class RunState:
         self.generations: list[LineageView] = []
         self.frontier: list[FrontierEntryView] = []
         self.sparkline: list[SparklinePoint] = []
+        # v0.7.1: multi-generation tree state. Each entry preserves a frozen
+        # snapshot of `workers` from one generation so the evo-tree renderer
+        # can show every round's fan-out in a single growing tree.
+        self.lineage_history: list[GenerationSnapshot] = []
+        self.current_generation: int = 0
 
     # ---- event ingest ------------------------------------------------
 
@@ -175,6 +192,53 @@ class RunState:
             wid = evt.worker_id  # type: ignore[attr-defined]
             w = self.workers.setdefault(wid, WorkerView(id=wid))
             w.last_proposal = evt.proposal  # type: ignore[attr-defined]
+        elif kind == "GenerationStarted":
+            # Snapshot current workers as a generation in the lineage tree
+            # before clearing for the next round. The first gen (gen=0) has
+            # nothing to snapshot; subsequent gens preserve the prior round.
+            new_gen = evt.gen  # type: ignore[attr-defined]
+            parent = evt.parent  # type: ignore[attr-defined]
+            if self.workers:
+                # Freeze a copy of every worker so later mutations don't
+                # mutate the snapshot.
+                snap = [
+                    WorkerView(
+                        id=w.id, strategy=w.strategy, status=w.status,
+                        phase=w.phase, tests=w.tests, delta_pass=w.delta_pass,
+                        merged=w.merged, spawned_at=w.spawned_at,
+                        last_proposal=w.last_proposal,
+                    )
+                    for w in self.workers.values()
+                ]
+                self.lineage_history.append(GenerationSnapshot(
+                    gen=self.current_generation, parent=self.parent_label,
+                    workers=snap,
+                ))
+            self.current_generation = new_gen
+            self.parent_label = parent
+            self.workers.clear()
+        elif kind == "FrontierUpdated":
+            existing = {fe.id: fe for fe in self.frontier}
+            existing[evt.admitted_id] = FrontierEntryView(  # type: ignore[attr-defined]
+                id=evt.admitted_id,  # type: ignore[attr-defined]
+                score=evt.admitted_score,  # type: ignore[attr-defined]
+                parent=self.parent_label,
+                active=True,
+            )
+            evicted = getattr(evt, "evicted_id", None)
+            if evicted and evicted in existing:
+                del existing[evicted]
+            # Demote prior actives so only the new admit pulses
+            for fe_id, fe in existing.items():
+                if fe_id != evt.admitted_id and fe.active:  # type: ignore[attr-defined]
+                    existing[fe_id] = FrontierEntryView(
+                        id=fe.id, score=fe.score, parent=fe.parent, active=False,
+                    )
+            self.frontier = sorted(existing.values(), key=lambda e: e.id)
+        elif kind == "SparklineSample":
+            self.sparkline.append(SparklinePoint(
+                t=evt.t, score=evt.score,  # type: ignore[attr-defined]
+            ))
 
     # ---- read side ---------------------------------------------------
 
