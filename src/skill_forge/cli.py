@@ -376,6 +376,107 @@ def evolve(
 
 
 @app.command()
+def retro(
+    pain_from: Path | None = typer.Option(
+        None, "--pain-from",
+        help="Override transcripts directory (default: cwd-resolved "
+             "~/.claude/projects/<encoded>).",
+    ),
+    workers_per_skill: int = typer.Option(
+        3, "--workers-per-skill", min=1, max=16,
+        help="Mutation workers per attributed skill (default 3).",
+    ),
+    generations: int = typer.Option(
+        2, "--generations", "-g", min=1, max=20,
+        help="Number of evolution generations per skill (default 2).",
+    ),
+    baseline_runs: int = typer.Option(
+        5, "--baseline-runs", min=3, max=20,
+        help="N consecutive red-baseline runs required to admit a "
+             "synthesized test (default 5; SOUL §1).",
+    ),
+    min_confidence: str = typer.Option(
+        "low", "--min-confidence",
+        help="Filter attributions by confidence: low | medium | high.",
+    ),
+    background: bool = typer.Option(
+        False, "--background",
+        help="Run retro as a detached subprocess; PID written to "
+             ".skill-forge/retro.pid.",
+    ),
+    kill: bool = typer.Option(
+        False, "--kill",
+        help="Kill any running retro by reading .skill-forge/retro.pid.",
+    ),
+    yes: bool = typer.Option(False, "--yes", "-y", help="Auto-confirm."),
+) -> None:
+    """v0.8 capstone: retrospective skill evolution from session pain.
+
+    Reads recent Claude Code transcripts + git diff, attributes pain to
+    specific skills in the local library, synthesizes regression tests
+    from the rough turns, runs concurrent multi-skill tournaments, and
+    surfaces a portfolio of merged improvements.
+    """
+    from skill_forge import retro as retro_mod
+    from skill_forge import retro_lifecycle as rl
+
+    if kill:
+        ok = rl.kill_background()
+        typer.echo("retro: killed background run." if ok else "retro: no background run found.")
+        raise typer.Exit(0)
+
+    if background:
+        # Re-exec ourselves without --background (avoid infinite spawn).
+        import sys as _sys
+        cmd = [_sys.argv[0], "retro",
+               "--workers-per-skill", str(workers_per_skill),
+               "--generations", str(generations),
+               "--baseline-runs", str(baseline_runs),
+               "--min-confidence", min_confidence]
+        if pain_from is not None:
+            cmd += ["--pain-from", str(pain_from)]
+        if yes:
+            cmd.append("--yes")
+        pid = rl._spawn_background(cmd=cmd)
+        typer.echo(f"retro: launched background run (PID {pid}).")
+        raise typer.Exit(0)
+
+    # Resolve transcripts dir
+    if pain_from is None:
+        from skill_forge.pain import resolve_transcripts_dir
+        try:
+            pain_from = resolve_transcripts_dir(Path.cwd())
+        except Exception as e:
+            typer.echo(f"retro: {e}")
+            raise typer.Exit(1) from None
+
+    # Skills inventory: scan .claude/skills/*/SKILL.md
+    skills_root = Path.cwd() / ".claude" / "skills"
+    inventory: set[str] = set()
+    if skills_root.is_dir():
+        for child in skills_root.iterdir():
+            if child.is_dir() and (child / "SKILL.md").is_file():
+                inventory.add(child.name)
+
+    portfolio = retro_mod.run(
+        transcripts_dir=pain_from,
+        git_diff_path=None,
+        skills_inventory=inventory,
+        generations=generations,
+        frontier_size=2,
+        workers_per_skill=workers_per_skill,
+        patience=2,
+        min_confidence=min_confidence,
+    )
+    for entry in portfolio.entries:
+        prefix = "✓" if entry.accepted else "✗"
+        typer.echo(
+            f"{prefix} {entry.skill}: {entry.confidence} · "
+            f"score={entry.score:.3f} · {entry.reason}"
+        )
+
+
+@app.command()
 def transfer(
     source: str = typer.Argument(
         ..., help="Source skill name (under .claude/skills/<source>/).",
